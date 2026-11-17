@@ -168,7 +168,7 @@ pub fn portrait_pixels(id: usize) -> Vec<u32> {
 pub struct GeneralCommand {
     side: usize,
     next_update: f32,
-    plans: Vec<Option<Plan>>,
+    plans: Vec<Option<(usize, Plan)>>,
 }
 
 enum Plan {
@@ -198,21 +198,15 @@ impl GeneralCommand {
             return;
         }
         self.next_update = world.time + 1.0;
-        if !world
-            .units
-            .iter()
-            .any(|unit| unit.alive && unit.side == self.side && unit.general.is_some())
-        {
+        self.sync_plans(world);
+        if !self.plans.iter().any(Option::is_some) {
             return;
-        }
-        if self.plans.is_empty() {
-            self.prepare(world);
         }
         let visible: Vec<_> = (0..world.units.len())
             .filter(|&i| world.targetable_by(self.side, i))
             .collect();
-        for (i, plan) in self.plans.iter_mut().enumerate() {
-            let Some(plan) = plan.as_mut() else { continue };
+        for (i, entry) in self.plans.iter_mut().enumerate() {
+            let Some((_, plan)) = entry.as_mut() else { continue };
             let unit = &world.units[i];
             if !unit.alive {
                 continue;
@@ -237,43 +231,61 @@ impl GeneralCommand {
         }
     }
 
-    fn prepare(&mut self, world: &World) {
+    fn sync_plans(&mut self, world: &World) {
         self.plans.resize_with(world.units.len(), || None);
+        let mut reachable: Option<Vec<bool>> = None;
+        for (i, unit) in world.units.iter().enumerate() {
+            if !unit.alive || unit.side != self.side {
+                self.plans[i] = None;
+                continue;
+            }
+            let Some(id) = unit.general else {
+                self.plans[i] = None;
+                continue;
+            };
+            if self.plans[i].as_ref().is_some_and(|(cur, _)| *cur == id) {
+                continue;
+            }
+            let reach = reachable.get_or_insert_with(|| world.map.flood(world.map.bases[self.side]));
+            self.plans[i] = Some((id, self.build_plan(world, reach, unit, i, id)));
+        }
+    }
+
+    fn build_plan(
+        &self,
+        world: &World,
+        reachable: &[bool],
+        unit: &Unit,
+        i: usize,
+        id: usize,
+    ) -> Plan {
         let home = world.map.bases[self.side];
         let enemy = world.map.bases[1 - self.side];
         let step = if self.side == 0 { 1 } else { -1 };
         let across = |x| if self.side == 0 { x } else { MW - 1 - x };
-        let reachable = world.map.flood(home);
-        for (i, unit) in world.units.iter().enumerate() {
-            if unit.side != self.side {
-                continue;
-            }
-            let Some(id) = unit.general else { continue };
-            let lane = unit.tile().1;
-            let lateral = (i % 5) as i32 - 2;
-            let point =
-                |goal, radius, cover| best_tile(world, &reachable, unit.pos, goal, radius, cover);
-            self.plans[i] = Some(match GENERALS[id].strategy {
-                Offensive => Plan::Advance(point((enemy.0 - step, enemy.1 + lateral), 2, false)),
-                Guerrilla => Plan::Ambush {
-                    cover: point((across(MW / 2 - 8), lane), 7, true),
-                    forward: point((across(MW * 2 / 3), (lane + enemy.1) / 2), 6, true),
-                    rear: point((across(MW / 3 - 6), lane), 7, true),
-                },
-                Defense => Plan::Guard(point((home.0 + step * 2, home.1 + lateral), 3, false)),
-                Raid => {
-                    let flank = if id % 2 == 0 { MH / 5 } else { MH * 4 / 5 };
-                    let flank = flank + lateral;
-                    Plan::Patrol {
-                        points: [
-                            point((across(MW / 2 - 5), flank), 9, false),
-                            point((across(MW * 3 / 4), flank), 9, false),
-                            point((enemy.0 - step, enemy.1 + lateral), 2, false),
-                        ],
-                        leg: 0,
-                    }
+        let lane = unit.tile().1;
+        let lateral = (i % 5) as i32 - 2;
+        let point = |goal, radius, cover| best_tile(world, reachable, unit.pos, goal, radius, cover);
+        match GENERALS[id].strategy {
+            Offensive => Plan::Advance(point((enemy.0 - step, enemy.1 + lateral), 2, false)),
+            Guerrilla => Plan::Ambush {
+                cover: point((across(MW / 2 - 8), lane), 7, true),
+                forward: point((across(MW * 2 / 3), (lane + enemy.1) / 2), 6, true),
+                rear: point((across(MW / 3 - 6), lane), 7, true),
+            },
+            Defense => Plan::Guard(point((home.0 + step * 2, home.1 + lateral), 3, false)),
+            Raid => {
+                let flank = if id % 2 == 0 { MH / 5 } else { MH * 4 / 5 };
+                let flank = flank + lateral;
+                Plan::Patrol {
+                    points: [
+                        point((across(MW / 2 - 5), flank), 9, false),
+                        point((across(MW * 3 / 4), flank), 9, false),
+                        point((enemy.0 - step, enemy.1 + lateral), 2, false),
+                    ],
+                    leg: 0,
                 }
-            });
+            }
         }
     }
 }
@@ -646,5 +658,40 @@ mod tests {
         assert!(
             matches!(world.units[guerrilla].order, Order::Move { goal, attack: false } if tile_of(goal).0 < ambush_tile.0)
         );
+    }
+
+    #[test]
+    fn returning_command_makes_adjutant_and_allows_redelegation() {
+        let mut world = World::new(Field::Kursk, 41, 3000);
+        world.map.t.fill(Terrain::Plain);
+        let guard_a = tank(&mut world, 0, Kind::Tank, (12, 25));
+        let guard_b = tank(&mut world, 0, Kind::Tank, (12, 27));
+        assert!(world.assign_general(guard_a, Some(2)));
+        assert!(world.assign_general(guard_b, Some(2)));
+        world.start_battle();
+
+        let mut command = GeneralCommand::default();
+        command.update(&mut world);
+        assert!(matches!(world.units[guard_a].order, Order::Move { .. }));
+
+        let freed = world.return_general_command(2);
+        assert_eq!(freed, vec![guard_a, guard_b]);
+        assert!(world.adjutants[2]);
+        assert!(world.units[guard_a].manually_controlled());
+        assert_eq!(world.units[guard_a].order, Order::Idle);
+
+        world.time = 2.0;
+        command.update(&mut world);
+        assert_eq!(world.units[guard_a].order, Order::Idle);
+
+        assert!(world.delegate_in_battle(guard_a, Some(2)));
+        assert!(!world.adjutants[2]);
+        assert!(!world.units[guard_a].manually_controlled());
+        assert!(world.units[guard_b].manually_controlled());
+
+        world.time = 4.0;
+        command.update(&mut world);
+        assert!(matches!(world.units[guard_a].order, Order::Move { .. }));
+        assert_eq!(world.units[guard_b].order, Order::Idle);
     }
 }

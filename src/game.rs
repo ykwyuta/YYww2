@@ -99,6 +99,8 @@ enum Act {
     Begin,
     Generals,
     AssignGeneral(Option<usize>),
+    ReturnGeneral(usize),
+    DelegateSelected(usize),
     GeneralFocus((i32, i32)),
     Pause,
     Speed(u32),
@@ -587,6 +589,7 @@ impl Game {
             match self.world.phase {
                 Phase::Prep if self.show_generals => self.ldown = Some(p),
                 Phase::Prep => self.apply_tool(wp),
+                Phase::Battle if self.show_generals => self.ldown = Some(p),
                 Phase::Battle => {
                     if self.attack_mode && !self.sel.is_empty() {
                         self.command(wp, true);
@@ -638,7 +641,11 @@ impl Game {
             return;
         }
         let drag = (p.0 - d.0).abs() > 8.0 || (p.1 - d.1).abs() > 8.0;
-        if self.world.phase == Phase::Prep && self.show_generals && !self.show_help && !self.over_ui(p) {
+        if matches!(self.world.phase, Phase::Prep | Phase::Battle)
+            && self.show_generals
+            && !self.show_help
+            && !self.over_ui(p)
+        {
             self.delegate_at(self.to_world(d), self.to_world(p), drag);
             return;
         }
@@ -719,6 +726,7 @@ impl Game {
             0x41 => self.act(Act::AttackMode),
             0x53 => self.act(Act::Stop),
             0x44 => self.act(Act::Drone),
+            0x47 => self.act(Act::Generals),
             0x51 => self.act(Act::AllTanks),
             0xbb | 0x6b => self.speed = (self.speed + 1).min(4),
             0xbd | 0x6d => self.speed = self.speed.saturating_sub(1).max(1),
@@ -741,25 +749,54 @@ impl Game {
             .min_by(|&a, &b| dist(self.world.units[a].pos, wp).partial_cmp(&dist(self.world.units[b].pos, wp)).unwrap_or(std::cmp::Ordering::Equal))
     }
 
+    fn selected_direct_tanks(&self) -> Vec<usize> {
+        self.sel
+            .iter()
+            .copied()
+            .filter(|&i| {
+                self.world
+                    .units
+                    .get(i)
+                    .is_some_and(|u| u.kind == Kind::Tank && u.manually_controlled())
+            })
+            .collect()
+    }
+
     fn delegate_at(&mut self, from: (f32, f32), to: (f32, f32), drag: bool) {
         let eligible = self.world.units.iter().enumerate().filter(|(_, u)| {
             u.alive && u.side == 0 && u.kind == Kind::Tank
         });
-        if drag {
+        let targets: Vec<usize> = if drag {
             let (x0, x1) = (from.0.min(to.0), from.0.max(to.0));
             let (y0, y1) = (from.1.min(to.1), from.1.max(to.1));
-            let units: Vec<_> = eligible.filter(|(_, u)| {
-                (x0..=x1).contains(&u.pos.0) && (y0..=y1).contains(&u.pos.1)
-            }).map(|(i, _)| i).collect();
-            for i in units {
-                self.world.assign_general(i, self.assign_to);
+            eligible
+                .filter(|(_, u)| (x0..=x1).contains(&u.pos.0) && (y0..=y1).contains(&u.pos.1))
+                .map(|(i, _)| i)
+                .collect()
+        } else {
+            eligible
+                .map(|(i, u)| (i, dist(u.pos, to)))
+                .filter(|(_, d)| *d < TS * 0.70)
+                .min_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(i, _)| vec![i])
+                .unwrap_or_default()
+        };
+        for i in targets {
+            match self.world.phase {
+                Phase::Prep => {
+                    self.world.assign_general(i, self.assign_to);
+                }
+                Phase::Battle => {
+                    if self.world.delegate_in_battle(i, self.assign_to) && self.assign_to.is_none() && !self.sel.contains(&i) {
+                        self.sel.push(i);
+                    }
+                }
+                Phase::Over => {}
             }
-        } else if let Some((i, _)) = eligible
-            .map(|(i, u)| (i, dist(u.pos, to)))
-            .filter(|(_, d)| *d < TS * 0.70)
-            .min_by(|a, b| a.1.total_cmp(&b.1))
-        {
-            self.world.assign_general(i, self.assign_to);
+        }
+        if self.world.phase == Phase::Battle {
+            let w = &self.world;
+            self.sel.retain(|&u| w.units.get(u).is_some_and(Unit::manually_controlled));
         }
     }
 
@@ -903,15 +940,80 @@ impl Game {
                 ai::prepare(&mut self.world, 0, self.seed ^ (self.clock * 1000.0) as u32);
             }
             Act::Clear => self.world.clear_side(0),
-            Act::Generals if self.world.phase == Phase::Prep => {
+            Act::Generals if matches!(self.world.phase, Phase::Prep | Phase::Battle) => {
                 self.show_generals = !self.show_generals;
                 self.ldown = None;
                 self.painting = false;
+                self.attack_mode = false;
+                if self.show_generals && self.world.phase == Phase::Battle {
+                    let focused_active = self.assign_to.is_some_and(|id| {
+                        self.world.adjutants[id]
+                            || self.world.units.iter().any(|u| u.alive && u.side == 0 && u.general == Some(id))
+                    });
+                    if !focused_active {
+                        if let Some(id) = self
+                            .world
+                            .units
+                            .iter()
+                            .find_map(|u| (u.alive && u.side == 0).then_some(u.general).flatten())
+                            .or_else(|| self.world.adjutants.iter().position(|&a| a))
+                        {
+                            self.assign_to = Some(id);
+                        }
+                    }
+                }
             }
-            Act::AssignGeneral(id) if self.world.phase == Phase::Prep && self.show_generals => {
+            Act::AssignGeneral(id)
+                if matches!(self.world.phase, Phase::Prep | Phase::Battle) && self.show_generals =>
+            {
                 self.assign_to = id;
             }
-            Act::Generals | Act::AssignGeneral(_) => {}
+            Act::ReturnGeneral(id) if self.world.phase == Phase::Battle => {
+                let freed = self.world.return_general_command(id);
+                if !freed.is_empty() {
+                    let n = freed.len();
+                    self.sel = freed;
+                    self.assign_to = Some(id);
+                    self.push_log(
+                        tf!(
+                            "{} が指揮権を返還し、副官に着任（{}両を直轄へ）",
+                            "{} returned command as adjutant ({} tanks to direct control)",
+                            "{} 交还指挥权并转为副官（{} 辆归入直属）",
+                            GENERALS[id].name(),
+                            n
+                        ),
+                        true,
+                    );
+                }
+            }
+            Act::DelegateSelected(id) if self.world.phase == Phase::Battle => {
+                let tanks = self.selected_direct_tanks();
+                let mut count = 0;
+                for i in tanks {
+                    if self.world.delegate_in_battle(i, Some(id)) {
+                        count += 1;
+                    }
+                }
+                if count > 0 {
+                    let w = &self.world;
+                    self.sel.retain(|&u| w.units.get(u).is_some_and(Unit::manually_controlled));
+                    self.assign_to = Some(id);
+                    self.push_log(
+                        tf!(
+                            "{} に {}両の指揮を委任",
+                            "Delegated {} tanks to {}",
+                            "向 {} 委任了 {} 辆坦克",
+                            GENERALS[id].name(),
+                            count
+                        ),
+                        true,
+                    );
+                }
+            }
+            Act::Generals
+            | Act::AssignGeneral(_)
+            | Act::ReturnGeneral(_)
+            | Act::DelegateSelected(_) => {}
             Act::GeneralFocus(tile) => {
                 let point = center(tile);
                 self.cam = point;
@@ -1011,7 +1113,9 @@ impl Game {
                     else { self.render_shop(); }
                 } else {
                     self.render_selection();
-                    if !self.show_help {
+                    if self.world.phase == Phase::Battle && self.show_generals {
+                        self.render_generals();
+                    } else if !self.show_help {
                         self.render_general_report();
                     }
                 }
@@ -1615,6 +1719,9 @@ impl Game {
             }
             let pl = if self.paused { t!("再開", "Resume", "继续") } else { t!("一時停止", "Pause", "暂停") };
             self.button([x - 80.0, 5.0, x, bar - 5.0], pl, Act::Pause, self.paused);
+            x -= 86.0;
+            self.button([x - 76.0, 5.0, x, bar - 5.0],
+                t!("将軍 G", "Generals G", "将军 G"), Act::Generals, self.show_generals);
             // 占領の度合い
             let wd = &self.world;
             let caps = [wd.capture[0], wd.capture[1]];
@@ -1765,6 +1872,7 @@ impl Game {
             }
         }
 
+        let battle = self.world.phase == Phase::Battle;
         let compact = self.gfx.compact;
         let w = self.gfx.width as f32;
         let bottom = (self.gfx.height as f32 - 8.0).min(610.0);
@@ -1774,9 +1882,19 @@ impl Game {
         self.panel([left, top, left + width, bottom]);
         let x = left + 10.0;
         let inner = width - 20.0;
-        self.gfx.text(t!("将軍に指揮を委任", "Delegate command", "委任指挥"),
-            x, top + 8.0, inner, 23.0, Font::Big, GOLD);
-        let hint = if self.touch {
+        let title = if battle {
+            t!("将軍・副官の指揮権", "Command & Adjutants", "将军与副官指挥权")
+        } else {
+            t!("将軍に指揮を委任", "Delegate command", "委任指挥")
+        };
+        self.gfx.text(title, x, top + 8.0, inner, 23.0, Font::Big, GOLD);
+        let hint = if battle {
+            t!(
+                "指揮権を返還すると副官になり、直轄戦車を再び委任できます。",
+                "Return command to make a general an adjutant, then re-delegate tanks anytime.",
+                "交还指挥权后将转为副官，可随时重新委任直属坦克。"
+            )
+        } else if self.touch {
             t!("将軍を選び、配置済みの戦車をタップ。", "Choose a general, then tap your deployed tanks.", "选择将军后，点按已部署的坦克。")
         } else {
             t!("将軍を選び、配置済みの戦車をクリック／範囲指定。", "Choose a general, then click or box-select deployed tanks.", "选择将军后，点击或框选已部署的坦克。")
@@ -1785,8 +1903,10 @@ impl Game {
 
         let mut counts = [0; GENERALS.len()];
         for unit in &self.world.units {
-            if let Some(i) = unit.general.filter(|_| unit.alive) {
-                counts[i] += 1;
+            if unit.alive && unit.side == 0 {
+                if let Some(i) = unit.general {
+                    counts[i] += 1;
+                }
             }
         }
         let grid_top = top + 61.0;
@@ -1818,6 +1938,9 @@ impl Game {
             if counts[i] != 0 {
                 self.gfx.fill_rect(r[2] - 22.0, by + 4.0, r[2] - 4.0, by + 22.0, PANEL);
                 self.gfx.text(&counts[i].to_string(), r[2] - 22.0, by + 4.0, 18.0, 18.0, Font::NormalCenter, GOLD);
+            } else if battle && self.world.adjutants[i] {
+                self.gfx.fill_rect(r[2] - 34.0, by + 4.0, r[2] - 4.0, by + 20.0, PANEL);
+                self.gfx.text(t!("副官", "Adj", "副官"), r[2] - 33.0, by + 4.0, 28.0, 16.0, Font::Small, [0.62, 0.85, 0.98, 1.0]);
             }
             let short = general.name().split([' ', '・', '·']).next().unwrap_or(general.name());
             self.gfx.text(short, bx + 5.0, r[3] - 19.0, cw - 10.0, 16.0, Font::NormalCenter, TEXT);
@@ -1826,7 +1949,15 @@ impl Game {
         }
         let header = self.assign_to.map_or_else(
             || t!("直轄部隊", "Direct command", "直属部队").to_string(),
-            |i| tf!("{}　委任 {} 両", "{}  ·  {} assigned", "{}  ·  委任 {} 辆", GENERALS[i].name(), counts[i])
+            |i| {
+                if battle && counts[i] == 0 && self.world.adjutants[i] {
+                    tf!("{}　副官（再委任可能）", "{}  ·  Adjutant (standby)", "{}  ·  副官（可重新委任）", GENERALS[i].name())
+                } else if battle && counts[i] > 0 {
+                    tf!("{}　将軍（委任 {} 両）", "{}  ·  General ({} assigned)", "{}  ·  将军（委任 {} 辆）", GENERALS[i].name(), counts[i])
+                } else {
+                    tf!("{}　委任 {} 両", "{}  ·  {} assigned", "{}  ·  委任 {} 辆", GENERALS[i].name(), counts[i])
+                }
+            },
         );
         self.gfx.text(&header, x, details, inner, 22.0, Font::Big, GOLD);
         if let Some(i) = self.assign_to {
@@ -1838,11 +1969,30 @@ impl Game {
                 x, details + 23.0, inner, 34.0, Font::Small, TEXT);
         }
         let third = (inner - 2.0 * gap) / 3.0;
-        self.button([x, footer, x + third, bottom - 7.0], t!("配置に戻る", "Deployment", "返回部署"), Act::Generals, false);
-        self.button([x + third + gap, footer, x + 2.0 * third + gap, bottom - 7.0],
-            t!("直轄へ戻す", "Direct control", "恢复直属"), Act::AssignGeneral(None), self.assign_to.is_none());
-        self.button([x + 2.0 * (third + gap), footer, x + inner, bottom - 7.0],
-            t!("戦闘開始 ▶", "Begin battle ▶", "开始战斗 ▶"), Act::Begin, true);
+        if battle {
+            self.button([x, footer, x + third, bottom - 7.0], t!("閉じる", "Close", "关闭"), Act::Generals, false);
+            if let Some(id) = self.assign_to.filter(|&id| counts[id] > 0) {
+                self.button([x + third + gap, footer, x + 2.0 * third + gap, bottom - 7.0],
+                    t!("指揮権を返還", "Return command", "交还指挥权"), Act::ReturnGeneral(id), true);
+            } else {
+                self.button([x + third + gap, footer, x + 2.0 * third + gap, bottom - 7.0],
+                    t!("直轄へ戻す", "Direct control", "恢复直属"), Act::AssignGeneral(None), self.assign_to.is_none());
+            }
+            let sel_n = self.selected_direct_tanks().len();
+            if let Some(id) = self.assign_to.filter(|_| sel_n > 0) {
+                self.button([x + 2.0 * (third + gap), footer, x + inner, bottom - 7.0],
+                    &tf!("選択 {} 両を委任", "Assign {} tanks", "委任 {} 辆", sel_n), Act::DelegateSelected(id), true);
+            } else {
+                self.button([x + 2.0 * (third + gap), footer, x + inner, bottom - 7.0],
+                    t!("直轄戦車を選ぶ Q", "Select direct Q", "选择直属 Q"), Act::AllTanks, false);
+            }
+        } else {
+            self.button([x, footer, x + third, bottom - 7.0], t!("配置に戻る", "Deployment", "返回部署"), Act::Generals, false);
+            self.button([x + third + gap, footer, x + 2.0 * third + gap, bottom - 7.0],
+                t!("直轄へ戻す", "Direct control", "恢复直属"), Act::AssignGeneral(None), self.assign_to.is_none());
+            self.button([x + 2.0 * (third + gap), footer, x + inner, bottom - 7.0],
+                t!("戦闘開始 ▶", "Begin battle ▶", "开始战斗 ▶"), Act::Begin, true);
+        }
     }
 
     fn render_shop(&mut self) {
@@ -2006,7 +2156,8 @@ impl Game {
             }
             let s = u.spec();
             let terr = wd.map.at(u.tile().0, u.tile().1);
-            self.gfx.text(&format!("{}（{}）", s.name(), u.nation.name()), x0 + 10.0, y0 + 4.0, pw - 20.0, 22.0, Font::Big, GOLD);
+            let title_w = if self.world.phase == Phase::Battle { pw - 166.0 } else { pw - 20.0 };
+            self.gfx.text(&format!("{}（{}）", s.name(), u.nation.name()), x0 + 10.0, y0 + 4.0, title_w, 22.0, Font::Big, GOLD);
             let l1 = tf!("耐久 {}/{}　装甲 正面{} 側面{} 背面{}　貫通 {}", "HP {}/{}  Armor F{} S{} R{}  Pen {}", "耐久 {}/{}　装甲 正{} 侧{} 后{}　穿深 {}", u.hp.ceil() as u32, s.hp as u32, s.front as u32, s.side as u32, s.rear() as u32, s.pen as u32);
             let l2 = tf!("地形：{}（速度 x{:.2}）　撃破 {}", "Terrain: {} (speed x{:.2})  Kills {}", "地形：{}（速度 x{:.2}）　击毁 {}", terr.name(), terr.speed(s.weight), u.kills);
             self.gfx.text(&l1, x0 + 10.0, y0 + 28.0, pw - 20.0, 20.0, Font::Small, TEXT);
@@ -2014,12 +2165,26 @@ impl Game {
         } else {
             let n = self.sel.len();
             let hp: f32 = self.sel.iter().map(|&i| wd.units[i].hp / wd.units[i].spec().hp.max(1.0)).sum::<f32>() / n as f32;
-            self.gfx.text(&tf!("{}両を選択中", "{} selected", "已选择 {}辆", n), x0 + 10.0, y0 + 4.0, pw - 20.0, 22.0, Font::Big, GOLD);
+            let title_w = if self.world.phase == Phase::Battle { pw - 166.0 } else { pw - 20.0 };
+            self.gfx.text(&tf!("{}両を選択中", "{} selected", "已选择 {}辆", n), x0 + 10.0, y0 + 4.0, title_w, 22.0, Font::Big, GOLD);
             let mut names: Vec<&str> = self.sel.iter().map(|&i| wd.units[i].spec().name()).collect();
             names.sort();
             names.dedup();
             let l = tf!("平均耐久 {}%　{}", "Avg HP {}%  {}", "平均耐久 {}%　{}", (hp * 100.0) as u32, names.join(", "));
             self.gfx.text(&l, x0 + 10.0, y0 + 28.0, pw - 20.0, 44.0, Font::Small, TEXT);
+        }
+        if self.world.phase == Phase::Battle && !self.selected_direct_tanks().is_empty() {
+            let adj: Vec<usize> = self.world.adjutants.iter().enumerate().filter(|(_, &a)| a).map(|(i, _)| i).collect();
+            let (label, act, active) = if adj.len() == 1 {
+                let id = adj[0];
+                let short = GENERALS[id].name().split([' ', '・', '·']).next().unwrap_or(GENERALS[id].name());
+                (tf!("副官 {} へ委任", "Assign {}", "委任副官 {}", short), Act::DelegateSelected(id), true)
+            } else if !adj.is_empty() {
+                (t!("副官へ委任 G", "Assign adjutant G", "委任副官 G").to_string(), Act::Generals, true)
+            } else {
+                (t!("将軍に委任 G", "Delegate G", "委任将军 G").to_string(), Act::Generals, self.show_generals)
+            };
+            self.button([x0 + pw - 150.0, y0 + 3.0, x0 + pw - 7.0, y0 + 27.0], &label, act, active);
         }
     }
 
@@ -2031,9 +2196,9 @@ impl Game {
         self.panel([x0, y0, x0 + pw, y0 + ph]);
         self.gfx.text(t!("操作と規則", "Controls & rules", "操作与规则"), x0, y0 + 8.0, pw, 30.0, Font::BigCenter, GOLD);
         let body = t!(
-            "【準備】右の一覧から戦車を選び、自陣の明るい帯に左クリックで配置。デコイと竜の歯は中央の手前まで置ける。右クリックで取り除き、予算が戻る。\n【戦闘】左クリック／ドラッグで自軍を選択、右クリックで移動。敵を右クリックすると攻撃。A キーのあと地点を指定すると、敵を見つけ次第止まって撃つ攻撃移動。S 停止、Q 全戦車、D ドローン、Space 一時停止、＋／－ 速度。\n【地図】矢印キー・画面端・中ボタンのドラッグで移動、ホイールで拡大縮小、ミニマップで移動。\n【装甲】正面・側面・背面で装甲が違う。側面や背面を狙えば軽戦車でも重戦車を抜ける。移動中は命中率が下がる。\n【視界】森・村落・生垣の中の戦車は近づかないと見つからないが、撃つと位置がばれる。丘の上は遠くまで見える。\n【デコイ】敵には本物の戦車に見え、攻撃を引きつける。敵の戦車が近づくと見破られる。\n【竜の歯】戦車は通れない。敵は砲撃して壊さなければならない。\n【勝利】敵基地の円の中に自軍の戦車だけがいると占領が進む。占領するか全滅させれば勝ち。15分で決着しなければ残存戦力で判定。",
-            "[Deploy] Pick a tank on the right and left-click inside your bright zone. Decoys and teeth may go up to just short of the centre. Right-click removes an item and refunds it.\n[Battle] Left-click/drag to select, right-click to move. Right-click an enemy to attack. Press A then pick a point to attack-move (halt and fire at enemies). S stop, Q all tanks, D drone, Space pause, +/- speed.\n[Map] Arrow keys, screen edges or middle-drag to scroll; wheel to zoom; click the minimap.\n[Armor] Front, side and rear armor differ. Hit the side or rear and even light tanks can kill heavies. Firing on the move is less accurate.\n[Sight] Tanks in forest, villages or hedgerows are only spotted up close — until they fire. Hills see further.\n[Decoys] Look like real tanks to the enemy and draw fire, until an enemy tank comes close.\n[Dragon's teeth] Block tanks. The enemy must shoot them apart.\n[Victory] Your tanks alone inside the enemy base circle capture it. Capture the base or destroy every enemy tank. After 15 minutes the remaining strength decides.",
-            "【准备】从右侧列表选择坦克，在己方亮色区域左键部署。诱饵和龙牙可放置到中线前。右键撤除并退还预算。\n【战斗】左键/拖动选择部队，右键移动，右键点击敌人攻击。按A后指定地点为攻击移动（发现敌人即停下射击）。S停止，Q全部坦克，D无人机，空格暂停，＋/－速度。\n【地图】方向键、屏幕边缘或中键拖动移动，滚轮缩放，点击小地图移动。\n【装甲】正面、侧面、后部装甲不同。打击侧后方，轻坦也能击穿重坦。行进间射击命中率下降。\n【视野】森林、村落、树篱中的坦克只有接近才能发现，但开火会暴露。丘陵上视野更远。\n【诱饵】在敌人看来是真坦克，吸引火力，敌方坦克接近时会被识破。\n【龙牙】坦克无法通过，敌人必须炮击摧毁。\n【胜利】敌方基地圈内只有我方坦克时开始占领。占领或全歼即获胜。15分钟未分胜负则按剩余战力判定。"
+            "【準備】右の一覧から戦車を選び、自陣の明るい帯に左クリックで配置。デコイと竜の歯は中央の手前まで置ける。右クリックで取り除き、予算が戻る。\n【戦闘】左クリック／ドラッグで自軍を選択、右クリックで移動。敵を右クリックすると攻撃。A キーのあと地点を指定すると、敵を見つけ次第止まって撃つ攻撃移動。S 停止、Q 全戦車、D ドローン、G 将軍・副官（指揮権返還／再委任）、Space 一時停止、＋／－ 速度。\n【地図】矢印キー・画面端・中ボタンのドラッグで移動、ホイールで拡大縮小、ミニマップで移動。\n【装甲】正面・側面・背面で装甲が違う。側面や背面を狙えば軽戦車でも重戦車を抜ける。移動中は命中率が下がる。\n【視界】森・村落・生垣の中の戦車は近づかないと見つからないが、撃つと位置がばれる。丘の上は遠くまで見える。\n【デコイ】敵には本物の戦車に見え、攻撃を引きつける。敵の戦車が近づくと見破られる。\n【竜の歯】戦車は通れない。敵は砲撃して壊さなければならない。\n【勝利】敵基地の円の中に自軍の戦車だけがいると占領が進む。占領するか全滅させれば勝ち。15分で決着しなければ残存戦力で判定。",
+            "[Deploy] Pick a tank on the right and left-click inside your bright zone. Decoys and teeth may go up to just short of the centre. Right-click removes an item and refunds it.\n[Battle] Left-click/drag to select, right-click to move. Right-click an enemy to attack. Press A then pick a point to attack-move (halt and fire at enemies). S stop, Q all tanks, D drone, G generals/adjutants (return or re-delegate command), Space pause, +/- speed.\n[Map] Arrow keys, screen edges or middle-drag to scroll; wheel to zoom; click the minimap.\n[Armor] Front, side and rear armor differ. Hit the side or rear and even light tanks can kill heavies. Firing on the move is less accurate.\n[Sight] Tanks in forest, villages or hedgerows are only spotted up close — until they fire. Hills see further.\n[Decoys] Look like real tanks to the enemy and draw fire, until an enemy tank comes close.\n[Dragon's teeth] Block tanks. The enemy must shoot them apart.\n[Victory] Your tanks alone inside the enemy base circle capture it. Capture the base or destroy every enemy tank. After 15 minutes the remaining strength decides.",
+            "【准备】从右侧列表选择坦克，在己方亮色区域左键部署。诱饵和龙牙可放置到中线前。右键撤除并退还预算。\n【战斗】左键/拖动选择部队，右键移动，右键点击敌人攻击。按A后指定地点为攻击移动（发现敌人即停下射击）。S停止，Q全部坦克，D无人机，G将军/副官（交还或重新委任指挥权），空格暂停，＋/－速度。\n【地图】方向键、屏幕边缘或中键拖动移动，滚轮缩放，点击小地图移动。\n【装甲】正面、侧面、后部装甲不同。打击侧后方，轻坦也能击穿重坦。行进间射击命中率下降。\n【视野】森林、村落、树篱中的坦克只有接近才能发现，但开火会暴露。丘陵上视野更远。\n【诱饵】在敌人看来是真坦克，吸引火力，敌方坦克接近时会被识破。\n【龙牙】坦克无法通过，敌人必须炮击摧毁。\n【胜利】敌方基地圈内只有我方坦克时开始占领。占领或全歼即获胜。15分钟未分胜负则按剩余战力判定。"
         );
         self.gfx.text(body, x0 + 20.0, y0 + 46.0, pw - 40.0, ph - 100.0, Font::Small, TEXT);
         self.button([x0 + pw / 2.0 - 70.0, y0 + ph - 46.0, x0 + pw / 2.0 + 70.0, y0 + ph - 12.0], t!("閉じる", "Close", "关闭"), Act::Help, false);
