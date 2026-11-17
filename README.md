@@ -30,7 +30,7 @@ YYMythology と同じく Rust で書いており、ブラウザ版（WebAssembly
 
 ### 戦車
 
-国は選ばない。ドイツ・ソ連・アメリカ・イギリス・日本・イタリアの全24車種から自由に組み合わせて買える。
+国は選ばない。ドイツ・ソ連・アメリカ・イギリス・日本・イタリアの全42車種（各国のマイナー戦車・試作重戦車・自走砲を含む）から自由に組み合わせて買える。
 
 - ドイツ・ソ連の強力な戦車（ティーガーI 820、IS-2 780、パンター 650 など）は調達コストが高い。
 - 日本・イタリアの戦車（ハ号 65、L6/40 60、チハ 105 など）は安く、数と速さで勝負できる。
@@ -108,4 +108,4 @@ YYMythology と同じ構成で、Workers Static Assets または Pages に `dist
 | `src/gfx.rs`, `src/web.rs`, `web/` | ブラウザ版の描画（WebGL2 / Canvas2D）と入力 |
 | `src/win/` | Windows 版の描画（Direct3D11 / Direct2D / DirectWrite）とウィンドウ |
 
-描画・入力・Windows 版の層は YYMythology から引き継いだ。アイコンと読み込み画面の絵は `python tools/make_brand.py`（Pillow が必要）で再生成できる。
+描画・入力・Windows 版の層は YYMythology から引き継いだ。アイコンと読み込み画面の絵は `python tools/make_brand.py`、真上視点スプライトアトラスは `python tools/make_topdown_sprites.py`、透過RGBAスプライトは `python tools/make_sprites.py`（いずれも Pillow が必要）で再生成できる。

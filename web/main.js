@@ -53,6 +53,7 @@ const FONTS = [
   [20, true, true], // BigCenter
   [40, true, true], // Title
   [30, true, true], // TitleMid（題字が扁額に収まらないとき）
+  [64, false, true], // CoverTitle
 ];
 const LINE = 1.33;
 // この割合まではみ出す行は横に詰めて1行に収める

@@ -41,6 +41,7 @@ pub enum Font {
     Title,
     /// 題字（Title が扁額に収まらないとき）
     TitleMid,
+    CoverTitle,
 }
 
 #[derive(Debug)]
@@ -227,6 +228,35 @@ impl Gfx {
         self.flush();
         let v = |x, y, u, vv| Vertex { x, y, u, v: vv, c };
         self.verts.extend_from_slice(&[v(x0, y0, 0.0, 0.0), v(x1, y0, 1.0, 0.0), v(x1, y1, 1.0, 1.0), v(x0, y0, 0.0, 0.0), v(x1, y1, 1.0, 1.0), v(x0, y1, 0.0, 1.0)]);
+        self.upload_draw(t.id, linear);
+    }
+
+    pub fn begin_sprites(&mut self) {
+        self.flush();
+    }
+
+    pub fn push_sprite(&mut self, cx: f32, cy: f32, hl: f32, hw: f32, angle: f32, uv: [f32; 4], c: [f32; 4]) {
+        if self.verts.len() + 6 > MAX_VERTS * 4 {
+            return;
+        }
+        let (ca, sa) = (angle.cos(), angle.sin());
+        let p = |l: f32, w: f32| (cx + ca * l - sa * w, cy + sa * l + ca * w);
+        let a = p(-hl, -hw);
+        let b = p(hl, -hw);
+        let d = p(hl, hw);
+        let e = p(-hl, hw);
+        let v = |pt: (f32, f32), u, vv| Vertex { x: pt.0, y: pt.1, u, v: vv, c };
+        self.verts.extend_from_slice(&[
+            v(a, uv[0], uv[1]),
+            v(b, uv[2], uv[1]),
+            v(d, uv[2], uv[3]),
+            v(a, uv[0], uv[1]),
+            v(d, uv[2], uv[3]),
+            v(e, uv[0], uv[3]),
+        ]);
+    }
+
+    pub fn end_sprites(&mut self, t: &Texture, linear: bool) {
         self.upload_draw(t.id, linear);
     }
 

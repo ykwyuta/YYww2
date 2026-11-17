@@ -7,6 +7,9 @@ use crate::rng::{fbm, hash2, Rng};
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
+#[path = "map_art.rs"]
+mod art;
+
 pub const MW: i32 = 84;
 pub const MH: i32 = 52;
 /// 1マスの大きさ（世界座標）
@@ -302,7 +305,7 @@ impl Map {
 
     /// 地形の絵（1マス P 画素、RGBA）。境目は雑音でずらして自然な形にする
     pub fn render_pixels(&self) -> (u32, u32, Vec<u32>) {
-        const P: i32 = 12;
+        const P: i32 = 20;
         let (w, h) = ((MW * P) as u32, (MH * P) as u32);
         let mut px = vec![0u32; (w * h) as usize];
         let s = self.seed;
@@ -328,58 +331,19 @@ impl Map {
                 let (lx, ly) = ((fx - tx as f32), (fy - ty as f32));
                 match t {
                     Terrain::Forest | Terrain::Bocage => {
-                        // 木の樹冠：格子ごとに中心をずらした円
-                        let cell = if t == Terrain::Forest { 6 } else { 4 };
-                        let (gx, gy) = (pxx.div_euclid(cell), py.div_euclid(cell));
-                        let mut best = (9.0f32, 0.0f32, 0.0f32);
-                        for dy in -1..=1 {
-                            for dx in -1..=1 {
-                                let (cx, cy) = (gx + dx, gy + dy);
-                                if t == Terrain::Bocage && hash2(cx, cy, s ^ 41) < 0.3 {
-                                    continue;
-                                }
-                                let ccx = (cx as f32 + hash2(cx, cy, s ^ 17)) * cell as f32;
-                                let ccy = (cy as f32 + hash2(cx, cy, s ^ 19)) * cell as f32;
-                                let r = cell as f32 * (0.55 + hash2(cx, cy, s ^ 23) * 0.35);
-                                let (ddx, ddy) = (pxx as f32 - ccx, py as f32 - ccy);
-                                let d = (ddx * ddx + ddy * ddy).sqrt() / r;
-                                if d < best.0 {
-                                    best = (d, ddx / r, ddy / r);
-                                }
-                            }
-                        }
-                        if best.0 < 1.0 {
-                            // 北西から光
-                            let lit = 1.05 - (best.1 + best.2) * 0.18 - best.0 * 0.15;
-                            let g = if t == Terrain::Forest { [0.17, 0.32, 0.14] } else { [0.20, 0.36, 0.15] };
-                            c = [g[0] * lit * v, g[1] * lit * v, g[2] * lit * v];
-                        } else if t == Terrain::Forest {
-                            c = [0.11, 0.18, 0.09];
-                        }
+                        let litter = (fine - 0.5) * 0.06 + (n - 0.5) * 0.12;
+                        c = [c[0] + litter, c[1] + litter * 0.65, c[2] + litter * 0.55];
                     }
                     Terrain::Town => {
-                        // 家並み：区画の中に屋根
-                        let (bx, by) = (pxx.div_euclid(5), py.div_euclid(5));
-                        let k = hash2(bx, by, s ^ 31);
-                        let (ix, iy) = (pxx.rem_euclid(5), py.rem_euclid(5));
-                        if k > 0.3 && ix > 0 && iy > 0 {
-                            c = if k > 0.72 { [0.58, 0.32, 0.25] } else if k > 0.5 { [0.50, 0.46, 0.42] } else { [0.44, 0.38, 0.32] };
-                            if ix == 1 || iy == 1 {
-                                c = [c[0] * 1.15, c[1] * 1.15, c[2] * 1.15];
-                            }
-                            if self.field == Field::Stalingrad {
-                                // 焼けた瓦礫
-                                let r = hash2(pxx, py, s ^ 33);
-                                c = [c[0] * (0.55 + r * 0.3), c[1] * (0.52 + r * 0.25), c[2] * (0.5 + r * 0.2)];
-                            }
-                        }
+                        let stone = (hash2(pxx / 2, py / 2, s ^ 31) - 0.5) * 0.16;
+                        c = c.map(|channel| channel + stone);
                     }
                     Terrain::Water | Terrain::Ford => {
                         let wave = ((fx * 3.0 + fy * 1.3 + n * 6.0).sin() * 0.5 + 0.5) * 0.07;
                         c = [c[0] + wave, c[1] + wave, c[2] + wave];
                     }
                     Terrain::Bridge => {
-                        let along_x = self.at(tx - 1, ty).passable() && self.at(tx + 1, ty).passable();
+                        let along_x = art::bridge_along_x(self, tx, ty);
                         let edge = if along_x { (ly - 0.5).abs() > 0.38 } else { (lx - 0.5).abs() > 0.38 };
                         if edge {
                             c = [0.28, 0.24, 0.20];
@@ -391,8 +355,13 @@ impl Map {
                         let e = self.elev[idx(tx, ty)];
                         let rock = fbm(fx * 2.5, fy * 2.5, s ^ 12, 3);
                         c = [c[0] * (0.75 + rock * 0.5), c[1] * (0.75 + rock * 0.5), c[2] * (0.75 + rock * 0.5)];
-                        if self.field == Field::Alps && e + n * 0.25 > 0.82 {
-                            c = [0.92, 0.93, 0.96];
+                        if self.field == Field::Alps {
+                            let snow = ((e + n * 0.25 - 0.77) * 8.0).clamp(0.0, 1.0);
+                            let light = 0.63 + rock * 0.25;
+                            let crust = [light, light + 0.03, light + 0.07];
+                            for i in 0..3 {
+                                c[i] += (crust[i] - c[i]) * snow;
+                            }
                         }
                     }
                     Terrain::Swamp => {
@@ -429,6 +398,7 @@ impl Map {
                 px[(py as u32 * w + pxx as u32) as usize] = 0xff00_0000 | ((to8(c[2]) as u32) << 16) | ((to8(c[1]) as u32) << 8) | to8(c[0]) as u32;
             }
         }
+        art::paint(self, &mut px, P);
         (w, h, px)
     }
 }

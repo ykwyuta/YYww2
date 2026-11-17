@@ -115,7 +115,7 @@ fn run() -> Result<()> {
         lang::set_lang(platform::initial_lang());
         let inst = GetModuleHandleW(None)?;
         let class = w!("YYww2Wnd");
-        // アプリのアイコン（build.rs が assets/app_icon.ico を資源番号1として埋め込む）
+        // アプリのアイコン（build.rs が資源番号1として埋め込む）
         let icon = |sx: i32, sy: i32| -> HICON {
             LoadImageW(Some(inst.into()), PCWSTR(1 as *const u16), IMAGE_ICON, sx, sy, LR_DEFAULTCOLOR)
                 .map(|h| HICON(h.0))
