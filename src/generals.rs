@@ -2,7 +2,7 @@
 
 use crate::data::Terrain;
 use crate::map::{center, idx, inside, tile_of, MH, MW, TS};
-use crate::sim::{dist, Kind, Order, Phase, Target, World, CAPTURE_R};
+use crate::sim::{dist, Kind, Order, Phase, Target, Unit, World, CAPTURE_R};
 
 type Point = (f32, f32);
 
@@ -73,7 +73,7 @@ impl General {
 use Strategy::{Defense, Guerrilla, Offensive, Raid};
 
 // 肖像データの並びは tools/make_generals.py と対応する。
-pub const GENERALS: [General; 16] = [
+pub const GENERALS: [General; 19] = [
     General {
         names: ["朝霧 凛", "Rin Asagiri", "朝雾 凛"],
         strategy: Offensive,
@@ -138,6 +138,18 @@ pub const GENERALS: [General; 16] = [
         names: ["エミール・ファルク", "Emil Falk", "埃米尔·法尔克"],
         strategy: Offensive,
     },
+    General {
+        names: ["天音 ほたる", "Hotaru Amane", "天音 萤"],
+        strategy: Guerrilla,
+    },
+    General {
+        names: ["白石 なずな", "Nazuna Shiraishi", "白石 荠"],
+        strategy: Defense,
+    },
+    General {
+        names: ["ヴィクトル・クロウ", "Viktor Crow", "维克托·克劳"],
+        strategy: Offensive,
+    },
 ];
 
 pub const PORTRAIT_SIZE: u32 = 128;
@@ -154,27 +166,42 @@ pub fn portrait_pixels(id: usize) -> Vec<u32> {
 
 #[derive(Default)]
 pub struct GeneralCommand {
+    side: usize,
     next_update: f32,
     plans: Vec<Option<Plan>>,
 }
 
 enum Plan {
     Advance(Point),
-    Ambush { cover: Point, rear: Point },
+    Ambush {
+        cover: Point,
+        forward: Point,
+        rear: Point,
+    },
     Guard(Point),
-    Patrol { points: [Point; 3], leg: usize },
+    Patrol {
+        points: [Point; 3],
+        leg: usize,
+    },
 }
 
 impl GeneralCommand {
+    pub fn new(side: usize) -> Self {
+        Self {
+            side,
+            ..Self::default()
+        }
+    }
+
     pub fn update(&mut self, world: &mut World) {
         if world.phase != Phase::Battle || world.time < self.next_update {
             return;
         }
-        self.next_update = world.time + 1.4;
+        self.next_update = world.time + 1.0;
         if !world
             .units
             .iter()
-            .any(|unit| unit.alive && unit.general.is_some())
+            .any(|unit| unit.alive && unit.side == self.side && unit.general.is_some())
         {
             return;
         }
@@ -182,7 +209,7 @@ impl GeneralCommand {
             self.prepare(world);
         }
         let visible: Vec<_> = (0..world.units.len())
-            .filter(|&i| world.targetable_by(0, i))
+            .filter(|&i| world.targetable_by(self.side, i))
             .collect();
         for (i, plan) in self.plans.iter_mut().enumerate() {
             let Some(plan) = plan.as_mut() else { continue };
@@ -212,36 +239,81 @@ impl GeneralCommand {
 
     fn prepare(&mut self, world: &World) {
         self.plans.resize_with(world.units.len(), || None);
-        let home = world.map.bases[0];
-        let enemy = world.map.bases[1];
+        let home = world.map.bases[self.side];
+        let enemy = world.map.bases[1 - self.side];
+        let step = if self.side == 0 { 1 } else { -1 };
+        let across = |x| if self.side == 0 { x } else { MW - 1 - x };
         let reachable = world.map.flood(home);
         for (i, unit) in world.units.iter().enumerate() {
+            if unit.side != self.side {
+                continue;
+            }
             let Some(id) = unit.general else { continue };
             let lane = unit.tile().1;
             let lateral = (i % 5) as i32 - 2;
             let point =
                 |goal, radius, cover| best_tile(world, &reachable, unit.pos, goal, radius, cover);
             self.plans[i] = Some(match GENERALS[id].strategy {
-                Offensive => Plan::Advance(point((enemy.0 - 1, enemy.1 + lateral), 2, false)),
+                Offensive => Plan::Advance(point((enemy.0 - step, enemy.1 + lateral), 2, false)),
                 Guerrilla => Plan::Ambush {
-                    cover: point((MW / 2 - 8, lane), 7, true),
-                    rear: point((MW / 3 - 6, lane), 7, true),
+                    cover: point((across(MW / 2 - 8), lane), 7, true),
+                    forward: point((across(MW * 2 / 3), (lane + enemy.1) / 2), 6, true),
+                    rear: point((across(MW / 3 - 6), lane), 7, true),
                 },
-                Defense => Plan::Guard(point((home.0 + 3, home.1 + lateral), 3, false)),
+                Defense => Plan::Guard(point((home.0 + step * 2, home.1 + lateral), 3, false)),
                 Raid => {
                     let flank = if id % 2 == 0 { MH / 5 } else { MH * 4 / 5 };
                     let flank = flank + lateral;
                     Plan::Patrol {
                         points: [
-                            point((MW / 2 - 5, flank), 9, false),
-                            point((MW * 3 / 4, flank), 9, false),
-                            point((MW * 3 / 4, (flank + enemy.1) / 2), 7, false),
+                            point((across(MW / 2 - 5), flank), 9, false),
+                            point((across(MW * 3 / 4), flank), 9, false),
+                            point((enemy.0 - step, enemy.1 + lateral), 2, false),
                         ],
                         leg: 0,
                     }
                 }
             });
         }
+    }
+}
+
+/// 敵の前衛の一部を、プレイヤーが使っていない将軍に委任する。
+pub fn delegate_enemy(world: &mut World, seed: u32) {
+    let available: Vec<_> = GENERALS
+        .iter()
+        .enumerate()
+        .filter(|(_, general)| matches!(general.strategy, Offensive | Raid))
+        .map(|(i, _)| i)
+        .collect();
+    let choices: Vec<_> = available
+        .iter()
+        .copied()
+        .filter(|&i| {
+            !world
+                .units
+                .iter()
+                .any(|unit| unit.side == 0 && unit.general == Some(i))
+        })
+        .collect();
+    let pool = if choices.is_empty() {
+        &available
+    } else {
+        &choices
+    };
+    let general = pool[seed as usize % pool.len()];
+    let base = world.base_pos(1);
+    let mut tanks: Vec<_> = world
+        .units
+        .iter()
+        .enumerate()
+        .filter(|(_, unit)| unit.alive && unit.side == 1 && unit.kind == Kind::Tank)
+        .map(|(i, unit)| (i, dist(unit.pos, base)))
+        .collect();
+    tanks.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let count = tanks.len().div_ceil(2);
+    for (i, _) in tanks.into_iter().take(count) {
+        world.units[i].general = Some(general);
     }
 }
 
@@ -275,80 +347,195 @@ impl Plan {
     fn order(&mut self, world: &World, index: usize, visible: &[usize]) -> Order {
         let unit = &world.units[index];
         let position = unit.pos;
-        let nearest = |origin: Point, radius: f32| {
-            visible
+        let home = world.base_pos(unit.side);
+        let home_dist = dist(position, home);
+        if world.capture[unit.side] >= 0.08 && home_dist < TS * 20.0 {
+            let radius = CAPTURE_R * TS;
+            if home_dist > radius * 0.8 {
+                return go(position, home, false);
+            }
+            return engage(world, unit, visible, Some((home, radius))).unwrap_or(Order::Idle);
+        }
+        let limit = match self {
+            Self::Guard(_) => Some((home, TS * 12.0)),
+            _ => None,
+        };
+        if let Self::Ambush { rear, .. } = self {
+            let nearby = |pos| dist(position, pos) < TS * 6.0;
+            let threats = visible
                 .iter()
-                .copied()
-                .filter_map(|i| {
-                    let d = dist(origin, world.units[i].pos);
-                    (d <= radius).then_some((i, d))
+                .filter(|&&i| nearby(world.units[i].pos))
+                .count();
+            let friends = world
+                .units
+                .iter()
+                .filter(|ally| {
+                    ally.alive
+                        && ally.side == unit.side
+                        && ally.kind == Kind::Tank
+                        && nearby(ally.pos)
                 })
-                .min_by(|a, b| a.1.total_cmp(&b.1))
-                .map(|(i, _)| i)
-        };
-        let go = |goal, attack| {
-            if dist(position, goal) < TS * 0.62 {
-                Order::Idle
-            } else {
-                Order::Move { goal, attack }
+                .count();
+            if unit.hp < unit.spec().hp * 0.42 || threats > friends + 1 {
+                return go(position, *rear, false);
             }
-        };
+        }
+        if let Some(order) = engage(world, unit, visible, limit) {
+            return order;
+        }
+
+        // 撃てても抜けない相手の前では、攻撃移動で足を止めない。
+        let advance_fire = !visible
+            .iter()
+            .any(|&i| sight(world, unit, position, &world.units[i]));
         match self {
-            Self::Advance(goal) => nearest(position, TS * 15.0)
-                .map_or(go(*goal, true), |i| Order::Attack(Target::Unit(i))),
-            Self::Ambush { cover, rear } => {
-                let pressure = visible
-                    .iter()
-                    .filter(|&&i| dist(position, world.units[i].pos) < TS * 5.0)
-                    .count();
-                if unit.hp < unit.spec().hp * 0.42 || pressure >= 2 {
-                    go(*rear, false)
-                } else {
-                    go(*cover, true)
-                }
+            Self::Advance(goal) => go(position, *goal, advance_fire),
+            Self::Ambush { cover, forward, .. } => {
+                let goal = if world.time >= 40.0 { *forward } else { *cover };
+                go(position, goal, advance_fire)
             }
-            Self::Guard(goal) => {
-                let base = world.base_pos(0);
-                if let Some(i) = nearest(base, TS * (CAPTURE_R + 6.0)) {
-                    go(center(tile_of(world.units[i].pos)), true)
-                } else {
-                    go(*goal, false)
-                }
-            }
+            Self::Guard(goal) => go(position, *goal, false),
             Self::Patrol { points, leg } => {
-                let prey = visible
-                    .iter()
-                    .copied()
-                    .filter_map(|i| {
-                        let enemy = &world.units[i];
-                        let d = dist(position, enemy.pos);
-                        if d >= TS * unit.spec().range.min(11.0) {
-                            return None;
-                        }
-                        let hp = enemy.hp / enemy.spec().hp;
-                        let isolated = || {
-                            !visible.iter().any(|&other| {
-                                other != i
-                                    && world.units[other].kind == Kind::Tank
-                                    && dist(enemy.pos, world.units[other].pos) < TS * 4.0
-                            })
-                        };
-                        let vulnerable = enemy.kind == Kind::Decoy
-                            || hp < 0.65
-                            || (enemy.spec().side < unit.spec().pen * 0.8 && isolated());
-                        vulnerable.then_some((i, d / TS + hp * 4.0))
-                    })
-                    .min_by(|a, b| a.1.total_cmp(&b.1));
-                if let Some((i, _)) = prey {
-                    return Order::Attack(Target::Unit(i));
+                while *leg + 1 < points.len() && dist(position, points[*leg]) < TS {
+                    *leg += 1;
                 }
-                if dist(position, points[*leg]) < TS {
-                    *leg = (*leg + 1) % points.len();
-                }
-                go(points[*leg], false)
+                go(position, points[*leg], false)
             }
         }
     }
+}
+
+fn go(position: Point, goal: Point, attack: bool) -> Order {
+    if dist(position, goal) < TS * 0.62 {
+        Order::Idle
+    } else {
+        Order::Move { goal, attack }
+    }
+}
+
+fn sight(world: &World, unit: &Unit, from: Point, enemy: &Unit) -> bool {
+    dist(from, enemy.pos) <= unit.spec().range * TS && world.map.los(tile_of(from), enemy.tile())
+}
+
+fn penetration(unit: &Unit, from: Point, enemy: &Unit) -> f32 {
+    let fraction = (dist(from, enemy.pos) / (unit.spec().range * TS)).min(1.0);
+    unit.spec().pen * (1.0 - 0.3 * fraction)
+}
+
+fn engage(
+    world: &World,
+    unit: &Unit,
+    visible: &[usize],
+    limit: Option<(Point, f32)>,
+) -> Option<Order> {
+    let in_sector = |point| limit.is_none_or(|(base, radius)| dist(base, point) <= radius);
+    let range = unit.spec().range * TS;
+    let viable = |enemy: &Unit| {
+        let near = dist(unit.pos, enemy.pos) < range + TS * 4.0;
+        near && in_sector(enemy.pos)
+            && (limit.is_none()
+                || dist(world.base_pos(unit.side), enemy.pos) <= (CAPTURE_R + 6.0) * TS)
+    };
+    let mut best_shot = None;
+    let mut maneuvers = Vec::new();
+    for &i in visible {
+        let enemy = &world.units[i];
+        if !viable(enemy) {
+            continue;
+        }
+        let hp = if enemy.kind == Kind::Tank {
+            enemy.hp / enemy.spec().hp
+        } else {
+            1.0
+        };
+        let focus = if unit.order == Order::Attack(Target::Unit(i)) {
+            0.25
+        } else {
+            0.0
+        };
+        let score = dist(unit.pos, enemy.pos) / range + hp * 0.58 - focus;
+        let armor = enemy.armor_toward(unit.pos);
+        let pen = penetration(unit, unit.pos, enemy);
+        if pen >= armor * 0.88 && sight(world, unit, unit.pos, enemy) {
+            let shot_score = score + armor / pen * 0.30;
+            if best_shot.is_none_or(|(best, _)| shot_score < best) {
+                best_shot = Some((shot_score, i));
+            }
+        } else if unit.spec().pen >= enemy.spec().rear() * 0.83 {
+            maneuvers.push((score, i));
+        }
+    }
+    if let Some((_, i)) = best_shot {
+        return Some(Order::Attack(Target::Unit(i)));
+    }
+    maneuvers.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for (_, i) in maneuvers.into_iter().take(2) {
+        let enemy = &world.units[i];
+        let viable_shot = |point| {
+            in_sector(point)
+                && penetration(unit, point, enemy) >= enemy.armor_toward(point) * 0.90
+                && sight(world, unit, point, enemy)
+        };
+        if let Order::Move {
+            goal,
+            attack: false,
+        } = unit.order
+        {
+            if viable_shot(goal) {
+                return Some(unit.order);
+            }
+        }
+        if let Some(goal) = firing_position(world, unit, enemy, viable_shot) {
+            return Some(Order::Move {
+                goal,
+                attack: false,
+            });
+        }
+    }
+    None
+}
+
+fn firing_position(
+    world: &World,
+    unit: &Unit,
+    enemy: &Unit,
+    viable: impl Fn(Point) -> bool,
+) -> Option<Point> {
+    let extra = world.extra_cost(unit.side);
+    let mut candidates = Vec::new();
+    for fraction in [0.58, 0.85] {
+        let radius = TS * unit.spec().range * fraction;
+        for direction in 0..8 {
+            let angle = enemy.hull + direction as f32 * std::f32::consts::FRAC_PI_4;
+            let target = tile_of((
+                enemy.pos.0 + angle.cos() * radius,
+                enemy.pos.1 + angle.sin() * radius,
+            ));
+            if !world.map.at(target.0, target.1).passable()
+                || extra(target.0, target.1) != Some(0.0)
+            {
+                continue;
+            }
+            let point = center(target);
+            let travel = dist(unit.pos, point);
+            if travel < TS || !viable(point) {
+                continue;
+            }
+            let exposed = if world.map.at(target.0, target.1).cover() {
+                0.0
+            } else {
+                TS * 2.0
+            };
+            candidates.push((travel + exposed, target));
+        }
+    }
+    candidates.sort_by(|a, b| a.0.total_cmp(&b.0));
+    candidates.into_iter().take(3).find_map(|(_, tile)| {
+        let path = world
+            .map
+            .path(unit.tile(), tile, unit.spec().weight, &extra);
+        (path.last() == Some(&tile)).then(|| center(tile))
+    })
 }
 
 #[cfg(test)]
@@ -386,6 +573,35 @@ mod tests {
         world.start_battle();
         assert!(!world.assign_general(own, None));
         assert_eq!(world.units[own].general, Some(2));
+    }
+
+    #[test]
+    fn engages_an_effective_target_before_flanking_heavy_armor() {
+        let mut world = World::new(Field::Kursk, 13, 3000);
+        world.map.t.fill(Terrain::Plain);
+        let own = tank(&mut world, 0, Kind::Tank, (15, 23));
+        let heavy = tank(&mut world, 1, Kind::Tank, (19, 23));
+        world.units[heavy].ti = 3;
+        let light = tank(&mut world, 1, Kind::Tank, (23, 24));
+        world.start_battle();
+        world.spotted[0][heavy] = true;
+        world.spotted[0][light] = true;
+        let mut plan = Plan::Advance(center((70, 23)));
+        assert_eq!(
+            plan.order(&world, own, &[heavy, light]),
+            Order::Attack(Target::Unit(light))
+        );
+        let Order::Move {
+            goal,
+            attack: false,
+        } = plan.order(&world, own, &[heavy])
+        else {
+            panic!("a tank facing heavy frontal armor should find a firing position");
+        };
+        assert!(
+            penetration(&world.units[own], goal, &world.units[heavy])
+                >= world.units[heavy].armor_toward(goal) * 0.90
+        );
     }
 
     #[test]

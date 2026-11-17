@@ -107,6 +107,7 @@ enum Act {
     AttackMode,
     Stop,
     Drone,
+    DronePatrol,
     AllTanks,
     Again,
     ToTitle,
@@ -133,6 +134,7 @@ pub struct Game {
     world: World,
     commander: Commander,
     general_command: GeneralCommand,
+    enemy_general_command: GeneralCommand,
     radio: Radio,
     show_generals: bool,
     assign_to: Option<usize>,
@@ -167,6 +169,7 @@ pub struct Game {
     touch: bool,
     clock: f32,
     keys: [bool; 4],
+    patrol_key_down: bool,
     marker: Option<((f32, f32), f32, bool)>,
     menu_confirm: f32,
     notice: Option<(String, f32)>,
@@ -209,6 +212,7 @@ impl Game {
             world,
             commander,
             general_command: GeneralCommand::default(),
+            enemy_general_command: GeneralCommand::new(1),
             radio: Radio::default(),
             show_generals: false,
             assign_to: Some(0),
@@ -243,6 +247,7 @@ impl Game {
             touch: false,
             clock: 0.0,
             keys: [false; 4],
+            patrol_key_down: false,
             marker: None,
             menu_confirm: 0.0,
             notice: None,
@@ -331,6 +336,7 @@ impl Game {
         ai::prepare(&mut self.world, 1, self.seed ^ 0x51ed);
         self.commander = Commander::new(1, self.seed ^ 0xc0, aggr);
         self.general_command = GeneralCommand::default();
+        self.enemy_general_command = GeneralCommand::new(1);
         self.radio = Radio::default();
         self.show_generals = false;
         self.assign_to = Some(0);
@@ -408,6 +414,7 @@ impl Game {
                 while self.acc >= DT && steps < 12 {
                     self.commander.update(&mut self.world, DT);
                     self.general_command.update(&mut self.world);
+                    self.enemy_general_command.update(&mut self.world);
                     self.world.step();
                     self.acc -= DT;
                     steps += 1;
@@ -668,6 +675,13 @@ impl Game {
     }
 
     fn key(&mut self, vk: u32, down: bool) {
+        if vk == 0x50 {
+            if down && !self.patrol_key_down && self.screen == Screen::Battle {
+                self.act(Act::DronePatrol);
+            }
+            self.patrol_key_down = down;
+            return;
+        }
         match vk {
             0x25 => self.keys[0] = down,
             0x26 => self.keys[1] = down,
@@ -914,6 +928,7 @@ impl Game {
                 }
                 self.show_generals = false;
                 self.ldown = None;
+                generals::delegate_enemy(&mut self.world, self.seed);
                 self.world.start_battle();
                 self.act(Act::AllTanks);
             }
@@ -946,6 +961,10 @@ impl Game {
                     self.cam = self.world.units[d].pos;
                     self.clamp_cam();
                 }
+            }
+            Act::DronePatrol => {
+                let enabled = !self.world.drone_patrolling(0);
+                self.world.set_drone_patrol(0, enabled);
             }
             Act::AllTanks => {
                 self.sel = self.world.units.iter().enumerate()
@@ -1662,12 +1681,14 @@ impl Game {
             } else if let Some(id) = u.general {
                 if hover || self.zoom > 0.57 || self.show_generals {
                     let general = &GENERALS[id];
+                    let marker = if u.side == 0 { format!("G{:02}", id + 1) }
+                    else { tf!("敵 G{:02}", "Enemy G{:02}", "敌 G{:02}", id + 1) };
                     let name = if hover {
-                        format!("G{:02}  {}", id + 1, general.name())
+                        format!("{}  {}", marker, general.name())
                     } else {
-                        format!("G{:02}", id + 1)
+                        marker
                     };
-                    items.push((name, u.pos, general.strategy.color()));
+                    items.push((name, u.pos, if u.side == 0 { general.strategy.color() } else { RED }));
                 }
             } else if hover || (self.sel.len() == 1 && self.sel[0] == j) {
                 let name = if u.side == 1 { tf!("敵 {}", "Enemy {}", "敌 {}", u.spec().name()) } else { u.spec().name().to_string() };
@@ -1694,8 +1715,9 @@ impl Game {
         let Some(report) = self.radio.current() else { return };
         self.refresh_portrait_cache();
         let general = &GENERALS[report.general];
-        let urgent = report.cue == Cue::Support;
-        let accent = if urgent { [1.0, 0.63, 0.43, 1.0] } else { general.strategy.color() };
+        let enemy = report.side == 1;
+        let urgent = report.cue == Cue::Support && !enemy;
+        let accent = if enemy { RED } else if urgent { [1.0, 0.63, 0.43, 1.0] } else { general.strategy.color() };
         let compact = self.gfx.compact;
         let width = if compact { 392.0 } else { 476.0 };
         let right = self.gfx.width as f32 - 10.0;
@@ -1720,7 +1742,12 @@ impl Game {
         let x = art_x + size + 12.0;
         let text_width = right - x - 12.0;
         let name_width = if urgent { text_width - 104.0 } else { text_width };
-        self.gfx.text(general.name(), x, top + 9.0, name_width, 22.0, Font::Big, accent);
+        let heading = if enemy {
+            tf!("敵軍通信 · {}", "Enemy radio · {}", "敌军通信 · {}", general.name())
+        } else {
+            general.name().to_owned()
+        };
+        self.gfx.text(&heading, x, top + 9.0, name_width, 22.0, Font::Big, accent);
         self.gfx.text(report.line(), x, top + 34.0, text_width, 57.0, Font::Normal, TEXT);
         if urgent {
             self.gfx.text(t!("救援要請", "Support requested", "请求支援"), right - 110.0, top + 9.0, 100.0, 20.0, Font::Small, accent);
@@ -1741,7 +1768,7 @@ impl Game {
         let compact = self.gfx.compact;
         let w = self.gfx.width as f32;
         let bottom = (self.gfx.height as f32 - 8.0).min(610.0);
-        let width = if compact { 410.0 } else { 442.0 };
+        let width = if compact { 410.0 } else { 486.0 };
         let left = w - width - 8.0;
         let top = 44.0;
         self.panel([left, top, left + width, bottom]);
@@ -1766,7 +1793,7 @@ impl Game {
         let footer = bottom - 45.0;
         let details = footer - 94.0;
         let gap = 5.0;
-        let columns = if compact { 6 } else { 4 };
+        let columns = 6;
         let rows = GENERALS.len().div_ceil(columns);
         let cw = (inner - gap * (columns - 1) as f32) / columns as f32;
         let ch = ((details - grid_top - 7.0) / rows as f32).min(116.0);
@@ -1937,7 +1964,7 @@ impl Game {
         let bx = self.minimap[2] + 14.0;
         let bw = if compact { 74.0 } else { 96.0 };
         let by = h - 40.0;
-        let all_label = if self.world.units.iter().any(|u| u.alive && u.general.is_some()) {
+        let all_label = if self.world.units.iter().any(|u| u.alive && u.side == 0 && u.general.is_some()) {
             t!("直轄戦車 Q", "Direct Q", "直属坦克 Q")
         } else {
             t!("全戦車 Q", "All tanks Q", "全部坦克 Q")
@@ -1967,9 +1994,14 @@ impl Game {
         if self.sel.len() == 1 {
             let u = &wd.units[self.sel[0]];
             if u.kind == Kind::Drone {
-                self.gfx.text(t!("偵察ドローン", "Recon drone", "侦察无人机"), x0 + 10.0, y0 + 4.0, pw - 20.0, 22.0, Font::Big, GOLD);
-                let d = tf!("視界 {}マス・地形を無視して飛ぶ。戦力には数えず、攻撃されない。右クリックで移動", "Sight {} tiles, flies over any terrain. Not a combat unit and never attacked. Right-click to move.", "视野 {}格，无视地形飞行。不计入战力，也不会被攻击。右键移动", DRONE_SIGHT as u32);
-                self.gfx.text(&d, x0 + 10.0, y0 + 28.0, pw - 20.0, 48.0, Font::Small, TEXT);
+                self.gfx.text(t!("偵察ドローン", "Recon drone", "侦察无人机"), x0 + 10.0, y0 + 4.0, pw - 150.0, 22.0, Font::Big, GOLD);
+                let d = tf!("視界 {} マス。手動の移動・停止で巡回を解除。", "Sight {} tiles. Manual move or stop cancels patrol.", "视野 {} 格。手动移动或停止会取消巡逻。", DRONE_SIGHT as u32);
+                self.gfx.text(&d, x0 + 10.0, y0 + 30.0, pw - 20.0, 28.0, Font::Small, TEXT);
+                let patrol = self.world.drone_patrolling(0);
+                let label = if patrol { t!("巡回解除 P", "End patrol P", "解除巡逻 P") }
+                    else { t!("自動巡回 P", "Auto patrol P", "自动巡逻 P") };
+                self.button([x0 + pw - 132.0, y0 + 3.0, x0 + pw - 7.0, y0 + 27.0],
+                    label, Act::DronePatrol, patrol);
                 return;
             }
             let s = u.spec();

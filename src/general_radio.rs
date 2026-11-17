@@ -40,6 +40,7 @@ impl Cue {
 
 #[derive(Clone, Copy)]
 pub struct Report {
+    pub side: usize,
     pub general: usize,
     pub cue: Cue,
     pub tile: (i32, i32),
@@ -48,6 +49,18 @@ pub struct Report {
 }
 
 impl Report {
+    fn priority(self) -> (u8, bool) {
+        let friendly = self.side == 0;
+        (
+            if friendly {
+                self.cue.priority()
+            } else {
+                self.cue.priority().min(2)
+            },
+            friendly,
+        )
+    }
+
     pub fn line(self) -> &'static str {
         general_dialogue::line(self.general, self.cue as usize, self.variant)
     }
@@ -81,9 +94,9 @@ struct Group {
 
 #[derive(Default)]
 pub struct Radio {
-    last: [Status; GENERALS.len()],
-    aid_after: [f32; GENERALS.len()],
-    variants: [u16; GENERALS.len()],
+    last: [[Status; GENERALS.len()]; 2],
+    aid_after: [[f32; GENERALS.len()]; 2],
+    variants: [[u16; GENERALS.len()]; 2],
     pending: Vec<Report>,
     current: Option<(Report, f32)>,
     next_check: f32,
@@ -103,7 +116,8 @@ impl Radio {
             self.finish(world);
         } else if world.phase == Phase::Battle && world.time >= self.next_check && !paused {
             self.next_check = world.time + 1.0;
-            self.observe(world);
+            self.observe(world, 0);
+            self.observe(world, 1);
         }
         if paused {
             return;
@@ -120,30 +134,39 @@ impl Radio {
             .pending
             .iter()
             .enumerate()
-            .max_by_key(|&(i, report)| (report.cue.priority(), Reverse(i)));
+            .max_by_key(|&(i, report)| (report.priority(), Reverse(i)));
         if let Some((i, next)) = best {
             if self.current.is_none_or(|(shown, _)| {
-                next.cue == Cue::Support && shown.cue.priority() < next.cue.priority()
+                next.side == 0 && next.cue == Cue::Support && shown.priority() < next.priority()
             }) {
                 self.current = Some((self.pending.remove(i), 5.5));
             }
         }
     }
 
-    fn observe(&mut self, world: &World) {
-        if !world.units.iter().any(|unit| unit.general.is_some()) {
+    fn observe(&mut self, world: &World, side: usize) {
+        if !world
+            .units
+            .iter()
+            .any(|unit| unit.side == side && unit.general.is_some())
+        {
             return;
         }
         let visible: Vec<_> = world
             .units
             .iter()
             .enumerate()
-            .filter(|(i, _)| world.targetable_by(0, *i))
+            .filter(|(i, _)| world.targetable_by(side, *i))
             .map(|(_, unit)| unit.pos)
             .collect();
-        let enemy_base = world.base_pos(1);
+        let foe = 1 - side;
+        let enemy_base = world.base_pos(foe);
+        let forward = if side == 0 { 1.0 } else { -1.0 };
         let mut groups = [Group::default(); GENERALS.len()];
-        for unit in world.units.iter().filter(|unit| unit.alive) {
+        for (i, unit) in world.units.iter().enumerate() {
+            if !unit.alive || unit.side != side || (side == 1 && !world.targetable_by(0, i)) {
+                continue;
+            }
             let Some(id) = unit.general else { continue };
             let group = &mut groups[id];
             let threats = visible
@@ -151,8 +174,7 @@ impl Radio {
                 .filter(|&&pos| dist(pos, unit.pos) < 9.0 * TS)
                 .count();
             group.status.alive += 1;
-            group.status.advancing |=
-                matches!(unit.order, Order::Move { goal, .. } if goal.0 >= unit.pos.0 - TS);
+            group.status.advancing |= matches!(unit.order, Order::Move { goal, .. } if (goal.0 - unit.pos.0) * forward >= -TS);
             group.status.contact |= threats != 0
                 || matches!(unit.target, Some(Target::Unit(_)))
                 || matches!(unit.order, Order::Attack(Target::Unit(_)));
@@ -163,13 +185,19 @@ impl Radio {
                 group.aid_at = Some((risk, unit.tile()));
             }
             group.status.capturing |=
-                world.capture[1] > 0.0 && dist(unit.pos, enemy_base) <= CAPTURE_R * TS;
+                world.capture[foe] > 0.0 && dist(unit.pos, enemy_base) <= CAPTURE_R * TS;
             group.sum.0 += unit.pos.0;
             group.sum.1 += unit.pos.1;
         }
         for (id, mut group) in groups.into_iter().enumerate() {
-            let prior = self.last[id];
+            let prior = self.last[side][id];
             let status = &mut group.status;
+            if side == 1 && status.alive == 0 {
+                self.last[side][id] = Status::default();
+                self.pending
+                    .retain(|report| report.side != side || report.general != id);
+                continue;
+            }
             if status.alive == 0 && prior.alive == 0 {
                 continue;
             }
@@ -181,12 +209,12 @@ impl Radio {
             };
             let aid = group.aid_at.and_then(|((critical, threats), tile)| {
                 (critical
-                    || (status.alive < prior.alive && threats >= status.alive)
+                    || (side == 0 && status.alive < prior.alive && threats >= status.alive)
                     || threats > status.alive + 1)
                     .then_some(tile)
             });
             let events = [
-                (Cue::Ready, prior.alive == 0),
+                (Cue::Ready, side == 0 && prior.alive == 0),
                 (Cue::Advance, status.advancing && !prior.advancing),
                 (
                     Cue::Hold,
@@ -197,7 +225,7 @@ impl Radio {
                 ),
                 (Cue::Contact, status.contact && !prior.contact),
                 (Cue::Danger, status.danger && !prior.danger && aid.is_none()),
-                (Cue::Loss, status.alive < prior.alive),
+                (Cue::Loss, side == 0 && status.alive < prior.alive),
                 (
                     Cue::Relief,
                     prior.contact && !status.contact && status.alive > 0,
@@ -206,19 +234,20 @@ impl Radio {
             ];
             for (cue, triggered) in events {
                 if triggered {
-                    self.queue(id, cue, status.tile, world.time);
+                    self.queue(side, id, cue, status.tile, world.time);
                 }
             }
             if let Some(tile) = aid {
-                if world.time >= self.aid_after[id] {
-                    self.aid_after[id] = world.time + 30.0;
-                    self.queue(id, Cue::Support, tile, world.time);
+                if world.time >= self.aid_after[side][id] {
+                    self.aid_after[side][id] = world.time + 30.0;
+                    self.queue(side, id, Cue::Support, tile, world.time);
                 }
             } else {
-                self.pending
-                    .retain(|report| report.general != id || report.cue != Cue::Support);
+                self.pending.retain(|report| {
+                    report.side != side || report.general != id || report.cue != Cue::Support
+                });
             }
-            self.last[id] = *status;
+            self.last[side][id] = *status;
         }
     }
 
@@ -227,50 +256,64 @@ impl Radio {
         self.pending.clear();
         self.current = None;
         let Some(winner) = world.winner else { return };
-        let speaker = world
-            .units
-            .iter()
-            .filter(|unit| winner == 0 || !unit.alive)
-            .filter_map(|unit| unit.general.map(|id| (unit.alive, id, unit.tile())))
-            .max_by_key(|&(alive, id, _)| (alive, Reverse(id)));
-        if let Some((_, id, tile)) = speaker {
-            let cue = if winner == 0 { Cue::Victory } else { Cue::Loss };
-            self.queue(id, cue, tile, world.time);
+        for side in [winner, 1 - winner] {
+            let speaker = world
+                .units
+                .iter()
+                .enumerate()
+                .filter(|(i, unit)| {
+                    unit.side == side
+                        && (side == winner || !unit.alive)
+                        && (side == 0 || world.targetable_by(0, *i))
+                })
+                .filter_map(|(_, unit)| unit.general.map(|id| (unit.alive, id, unit.tile())))
+                .max_by_key(|&(alive, id, _)| (alive, Reverse(id)));
+            if let Some((_, id, tile)) = speaker {
+                let cue = if side == winner {
+                    Cue::Victory
+                } else {
+                    Cue::Loss
+                };
+                self.queue(side, id, cue, tile, world.time);
+                break;
+            }
         }
     }
 
-    fn queue(&mut self, general: usize, cue: Cue, tile: (i32, i32), created: f32) {
+    fn queue(&mut self, side: usize, general: usize, cue: Cue, tile: (i32, i32), created: f32) {
         if self
             .pending
             .iter()
-            .any(|r| r.general == general && r.cue == cue)
+            .any(|r| r.side == side && r.general == general && r.cue == cue)
         {
             return;
         }
-        if self.pending.len() >= MAX_WAITING {
-            let Some((i, lowest)) = self
-                .pending
-                .iter()
-                .enumerate()
-                .min_by_key(|&(i, r)| (r.cue.priority(), Reverse(i)))
-            else {
-                return;
-            };
-            if lowest.cue.priority() >= cue.priority() {
-                return;
-            }
-            self.pending.remove(i);
-        }
         let mask = 1 << cue as usize;
-        let variant = usize::from(self.variants[general] & mask != 0);
-        self.variants[general] ^= mask;
-        self.pending.push(Report {
+        let variant = usize::from(self.variants[side][general] & mask != 0);
+        let report = Report {
+            side,
             general,
             cue,
             tile,
             variant,
             created,
-        });
+        };
+        if self.pending.len() >= MAX_WAITING {
+            let Some((i, lowest)) = self
+                .pending
+                .iter()
+                .enumerate()
+                .min_by_key(|&(i, r)| (r.priority(), Reverse(i)))
+            else {
+                return;
+            };
+            if lowest.priority() >= report.priority() {
+                return;
+            }
+            self.pending.remove(i);
+        }
+        self.variants[side][general] ^= mask;
+        self.pending.push(report);
     }
 }
 
@@ -280,6 +323,33 @@ mod tests {
     use crate::data::{Nation, Terrain};
     use crate::map::{center, Field};
     use crate::sim::Kind;
+
+    #[test]
+    fn enemy_radio_requires_player_visibility_and_uses_the_enemy_side() {
+        let mut world = World::new(Field::Kursk, 13, 3000);
+        let mut enemy = World::new_unit(1, Kind::Tank, Nation::Germany, 0, center((70, 25)));
+        enemy.general = Some(0);
+        world.units.push(enemy);
+        world.start_battle();
+        world.order(
+            0,
+            Order::Move {
+                goal: center((58, 25)),
+                attack: true,
+            },
+        );
+
+        let mut radio = Radio::default();
+        radio.update(&world, 0.0, false);
+        assert!(radio.current().is_none());
+        assert!(radio.pending.is_empty());
+        world.spotted[0][0] = true;
+        world.time = 2.0;
+        radio.update(&world, 0.0, false);
+        let report = radio.current().unwrap();
+        assert_eq!(report.side, 1);
+        assert_eq!(report.cue, Cue::Advance);
+    }
 
     #[test]
     fn rescue_preempts_a_routine_report_and_points_at_the_damaged_tank() {

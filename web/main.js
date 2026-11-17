@@ -864,6 +864,7 @@ function bindInput() {
   window.addEventListener('keydown', (e) => {
     const vk = vkOf(e);
     if (!vk) return;
+    if (vk === 0x50 && (e.ctrlKey || e.metaKey || e.altKey)) return;
     if (shouldPrevent(e, vk)) e.preventDefault();
     held.add(vk);
     wasm.yy_event(4, vk, 1, 0);
