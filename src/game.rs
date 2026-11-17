@@ -4,6 +4,7 @@
 
 use crate::ai::{self, Commander};
 use crate::data::{Budget, Nation, TankSpec, Weight, BUDGETS, DECOY_COST, NATIONS, TEETH_COST};
+use crate::general_radio::{self, Cue, Radio, EXPRESSION_SIZE, EXPRESSIONS};
 use crate::generals::{self, GeneralCommand, GENERALS, PORTRAIT_SIZE};
 use crate::gfx::{Bitmap, Font, Gfx, Texture};
 
@@ -98,6 +99,7 @@ enum Act {
     Begin,
     Generals,
     AssignGeneral(Option<usize>),
+    GeneralFocus((i32, i32)),
     Pause,
     Speed(u32),
     Help,
@@ -131,9 +133,11 @@ pub struct Game {
     world: World,
     commander: Commander,
     general_command: GeneralCommand,
+    radio: Radio,
     show_generals: bool,
     assign_to: Option<usize>,
     portraits: [Option<Bitmap>; GENERALS.len()],
+    expressions: [[Option<Bitmap>; EXPRESSIONS]; GENERALS.len()],
     portrait_gen: Option<u32>,
     terrain: Option<Texture>,
     terrain_key: (Field, u32),
@@ -205,9 +209,11 @@ impl Game {
             world,
             commander,
             general_command: GeneralCommand::default(),
+            radio: Radio::default(),
             show_generals: false,
             assign_to: Some(0),
             portraits: std::array::from_fn(|_| None),
+            expressions: std::array::from_fn(|_| std::array::from_fn(|_| None)),
             portrait_gen: None,
             terrain: None,
             terrain_key: (Field::Kursk, 0),
@@ -325,6 +331,7 @@ impl Game {
         ai::prepare(&mut self.world, 1, self.seed ^ 0x51ed);
         self.commander = Commander::new(1, self.seed ^ 0xc0, aggr);
         self.general_command = GeneralCommand::default();
+        self.radio = Radio::default();
         self.show_generals = false;
         self.assign_to = Some(0);
         self.ldown = None;
@@ -412,6 +419,7 @@ impl Game {
                 // 結果画面でも煙などは動かす
                 self.world.step();
             }
+            self.radio.update(&self.world, dt, !running);
             for e in std::mem::take(&mut self.world.events) {
                 if let Some(p) = e.pos {
                     self.pings.push((p, 0.0));
@@ -890,6 +898,12 @@ impl Game {
                 self.assign_to = id;
             }
             Act::Generals | Act::AssignGeneral(_) => {}
+            Act::GeneralFocus(tile) => {
+                let point = center(tile);
+                self.cam = point;
+                self.pings.push((point, 0.0));
+                self.clamp_cam();
+            }
             Act::Begin => {
                 if self.world.phase != Phase::Prep {
                     return;
@@ -978,6 +992,9 @@ impl Game {
                     else { self.render_shop(); }
                 } else {
                     self.render_selection();
+                    if !self.show_help {
+                        self.render_general_report();
+                    }
                 }
                 if self.show_help {
                     self.render_help();
@@ -1663,13 +1680,62 @@ impl Game {
         }
     }
 
-    fn render_generals(&mut self) {
+    fn refresh_portrait_cache(&mut self) {
         if self.portrait_gen != Some(self.gfx.d2d_gen) {
-            for (i, portrait) in self.portraits.iter_mut().enumerate() {
+            self.portraits.fill_with(|| None);
+            for faces in &mut self.expressions {
+                faces.fill_with(|| None);
+            }
+            self.portrait_gen = Some(self.gfx.d2d_gen);
+        }
+    }
+
+    fn render_general_report(&mut self) {
+        let Some(report) = self.radio.current() else { return };
+        self.refresh_portrait_cache();
+        let general = &GENERALS[report.general];
+        let urgent = report.cue == Cue::Support;
+        let accent = if urgent { [1.0, 0.63, 0.43, 1.0] } else { general.strategy.color() };
+        let compact = self.gfx.compact;
+        let width = if compact { 392.0 } else { 476.0 };
+        let right = self.gfx.width as f32 - 10.0;
+        let bottom = self.gfx.height as f32 - 10.0;
+        let left = right - width;
+        let height = if urgent { 124.0 } else { 100.0 };
+        let top = bottom - height;
+        self.panel([left, top, right, bottom]);
+        self.gfx.fill_rect(left + 2.0, top + 14.0, left + 5.0, bottom - 14.0, accent);
+        let size = if compact { 72.0 } else { 80.0 };
+        let art_x = left + 11.0;
+        let art_y = top + 10.0;
+        let texture = &mut self.expressions[report.general][report.cue as usize];
+        if texture.is_none() {
+            let pixels = general_radio::expression_pixels(report.general, report.cue);
+            *texture = self.gfx.create_bitmap(EXPRESSION_SIZE, EXPRESSION_SIZE, &pixels);
+        }
+        let image = texture.as_ref().or(self.portraits[report.general].as_ref());
+        if let Some(image) = image {
+            self.gfx.draw_bitmap(image, art_x, art_y, art_x + size, art_y + size);
+        }
+        let x = art_x + size + 12.0;
+        let text_width = right - x - 12.0;
+        let name_width = if urgent { text_width - 104.0 } else { text_width };
+        self.gfx.text(general.name(), x, top + 9.0, name_width, 22.0, Font::Big, accent);
+        self.gfx.text(report.line(), x, top + 34.0, text_width, 57.0, Font::Normal, TEXT);
+        if urgent {
+            self.gfx.text(t!("救援要請", "Support requested", "请求支援"), right - 110.0, top + 9.0, 100.0, 20.0, Font::Small, accent);
+            self.button([right - 114.0, bottom - 30.0, right - 9.0, bottom - 7.0],
+                t!("現場へ", "Go to location", "查看位置"), Act::GeneralFocus(report.tile), false);
+        }
+    }
+
+    fn render_generals(&mut self) {
+        self.refresh_portrait_cache();
+        for (i, portrait) in self.portraits.iter_mut().enumerate() {
+            if portrait.is_none() {
                 let pixels = generals::portrait_pixels(i);
                 *portrait = self.gfx.create_bitmap(PORTRAIT_SIZE, PORTRAIT_SIZE, &pixels);
             }
-            self.portrait_gen = Some(self.gfx.d2d_gen);
         }
 
         let compact = self.gfx.compact;

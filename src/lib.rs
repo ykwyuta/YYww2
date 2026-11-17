@@ -12,6 +12,8 @@ mod lang;
 mod ai;
 mod data;
 mod game;
+mod general_dialogue;
+mod general_radio;
 mod generals;
 mod map;
 mod rng;
