@@ -86,6 +86,8 @@ enum Act {
     Budget(usize),
     Diff(usize),
     Reroll,
+    #[cfg(target_arch = "wasm32")]
+    ClearCache,
     Lang,
     Fullscreen,
     Start,
@@ -844,6 +846,12 @@ impl Game {
                 self.seed = self.seed.wrapping_mul(1664525).wrapping_add(1013904223) | 1;
                 self.regen_preview();
             }
+            #[cfg(target_arch = "wasm32")]
+            Act::ClearCache => {
+                if self.screen == Screen::Title {
+                    crate::platform::refresh_cache();
+                }
+            }
             Act::Lang => {
                 let l = lang::lang().next();
                 lang::set_lang(l);
@@ -1508,8 +1516,15 @@ impl Game {
         self.gfx.stroke_round(px0, py0, px1, py1, 4.0, 1.0, EDGE);
         self.gfx.text(t!("戦場プレビュー", "Battlefield preview", "战场预览"),
             px0 + 10.0, py0 + 2.0, px1 - px0 - 20.0, 24.0, Font::Normal, GOLD);
-        self.button([px0 + 6.0, py1 - 36.0, px1 - 6.0, py1 - 6.0],
+        #[cfg(not(target_arch = "wasm32"))]
+        let reroll_end = px1 - 6.0;
+        #[cfg(target_arch = "wasm32")]
+        let reroll_end = (px0 + px1) / 2.0 - 3.0;
+        self.button([px0 + 6.0, py1 - 36.0, reroll_end, py1 - 6.0],
             t!("地形を作り直す", "Regenerate terrain", "重新生成地形"), Act::Reroll, false);
+        #[cfg(target_arch = "wasm32")]
+        self.button([reroll_end + 6.0, py1 - 36.0, px1 - 6.0, py1 - 6.0],
+            t!("キャッシュ削除", "Clear cache", "清除缓存"), Act::ClearCache, false);
     }
 
     fn render_hud(&mut self) {

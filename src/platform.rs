@@ -61,6 +61,12 @@ pub fn now_ms() -> f64 {
     }
 }
 
+/// 保存データを保持したまま、ゲームのキャッシュを削除して再読み込みする。
+#[cfg(target_arch = "wasm32")]
+pub fn refresh_cache() {
+    unsafe { js::js_refresh_cache() }
+}
+
 /// 乱数の種（起動ごとに変わる）
 pub fn random_u32() -> u32 {
     #[cfg(target_arch = "wasm32")]

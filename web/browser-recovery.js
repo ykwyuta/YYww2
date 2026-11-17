@@ -11,8 +11,8 @@
     return lang.startsWith('zh') ? zh : lang.startsWith('en') ? en : ja;
   };
   const label = () => {
-    button.textContent = text('↻ キャッシュ更新', '↻ Refresh cache', '↻ 刷新缓存');
-    button.title = text('セーブを残してキャッシュを更新し、再読み込み', 'Refresh cached game files and reload, keeping saved games', '保留存档，刷新缓存并重新加载');
+    button.textContent = text('キャッシュ削除', 'Clear cache', '清除缓存');
+    button.title = text('ゲームのキャッシュを削除して再読み込み', 'Clear cached game files and reload', '清除游戏缓存并重新加载');
   };
   label();
   new MutationObserver(label).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
@@ -38,9 +38,9 @@
   async function refresh() {
     if (api.reloading) return;
     if (!window.confirm(text(
-      'セーブデータと設定を残し、ゲームのキャッシュを更新して再読み込みします。未保存の進行は失われます。必要なら先にF5の記録画面で保存してください。続けますか？',
-      'Refresh cached game files and reload? Saved games and settings will be kept. Unsaved progress will be lost. Save first in the F5 save screen if needed.',
-      '保留存档和设置，刷新游戏缓存并重新加载。未保存的进度将丢失。请根据需要先在F5存档画面保存。继续吗？'
+      'このゲームのキャッシュを削除して再読み込みします。セーブデータと設定は保持されますが、未保存の進行は失われます。続けますか？',
+      'Clear this game’s cached files and reload? Saved games and settings will be kept. Unsaved progress will be lost.',
+      '清除此游戏的缓存并重新加载？存档和设置会保留，未保存的进度将丢失。'
     ))) return;
     api.reloading = true;
     button.disabled = true;
