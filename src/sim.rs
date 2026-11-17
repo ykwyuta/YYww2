@@ -20,6 +20,10 @@ pub const TIME_LIMIT: f32 = 15.0 * 60.0;
 /// ドローンの視界と速さ（マス、マス/秒）
 pub const DRONE_SIGHT: f32 = 9.0;
 pub const DRONE_SPEED: f32 = 4.0;
+const DRONE_WAYPOINTS: [(f32, f32); 6] = [
+    (0.55, 0.25), (0.70, 0.50), (0.55, 0.75),
+    (0.85, 0.70), (0.85, 0.30), (0.45, 0.50),
+];
 /// 戦車への損害の倍率（戦闘が一瞬で終わらないように）
 pub const DAMAGE_SCALE: f32 = 0.6;
 /// デコイを見破る距離（マス）
@@ -50,6 +54,7 @@ pub struct Unit {
     pub side: usize,
     pub kind: Kind,
     pub general: Option<usize>,
+    patrol_leg: Option<usize>,
     pub nation: Nation,
     /// 戦車の種類（デコイは見せかけの種類）
     pub ti: usize,
@@ -77,6 +82,15 @@ pub struct Unit {
 }
 
 impl Unit {
+    pub(crate) fn armor_toward(&self, from: (f32, f32)) -> f32 {
+        let a = (from.1 - self.pos.1).atan2(from.0 - self.pos.0);
+        let rel = angle_diff(a, self.hull).abs();
+        let spec = self.spec();
+        if rel < 0.9 { spec.front }
+        else if rel > 2.3 { spec.rear() }
+        else { spec.side }
+    }
+
     pub fn manually_controlled(&self) -> bool {
         self.alive && self.side == 0 && self.kind != Kind::Decoy && self.general.is_none()
     }
@@ -195,6 +209,17 @@ pub fn dist(a: (f32, f32), b: (f32, f32)) -> f32 {
     ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt()
 }
 
+fn separation_position(unit: &Unit, mut push: (f32, f32)) -> (f32, f32) {
+    if unit.moving {
+        let heading = (unit.hull.cos(), unit.hull.sin());
+        let backward = (push.0 * heading.0 + push.1 * heading.1).min(0.0);
+        // 狭い道でも、押し合いが1フレームの前進を打ち消さないようにする。
+        push.0 -= heading.0 * backward;
+        push.1 -= heading.1 * backward;
+    }
+    (unit.pos.0 + push.0, unit.pos.1 + push.1)
+}
+
 impl World {
     pub fn new(field: Field, seed: u32, budget: u32) -> World {
         let map = Map::generate(field, seed);
@@ -275,6 +300,7 @@ impl World {
             side,
             kind,
             general: None,
+            patrol_leg: None,
             nation,
             ti,
             pos,
@@ -409,6 +435,20 @@ impl World {
         self.units.iter().position(|u| u.side == side && u.kind == Kind::Drone)
     }
 
+    pub fn drone_patrolling(&self, side: usize) -> bool {
+        self.drone(side).is_some_and(|i| self.units[i].patrol_leg.is_some())
+    }
+
+    pub fn set_drone_patrol(&mut self, side: usize, enabled: bool) {
+        if self.phase != Phase::Battle || self.drone_patrolling(side) == enabled {
+            return;
+        }
+        if let Some(i) = self.drone(side) {
+            self.order(i, Order::Idle);
+            self.units[i].patrol_leg = enabled.then_some(0);
+        }
+    }
+
     // ------------------------------------------------------------ 命令
 
     pub fn order(&mut self, i: usize, o: Order) {
@@ -421,6 +461,7 @@ impl World {
             u.repath = 0.0;
             u.breach = None;
             if u.kind == Kind::Drone {
+                u.patrol_leg = None;
                 if let Order::Attack(_) = o {
                     u.order = Order::Idle;
                 }
@@ -463,7 +504,7 @@ impl World {
         self.check_end();
     }
 
-    fn extra_cost(&self, side: usize) -> impl Fn(i32, i32) -> Option<f32> + '_ {
+    pub(crate) fn extra_cost(&self, side: usize) -> impl Fn(i32, i32) -> Option<f32> + '_ {
         move |x, y| {
             let k = self.teeth_at[idx(x, y)];
             if k == usize::MAX {
@@ -592,6 +633,12 @@ impl World {
 
     fn update_drone(&mut self, i: usize) {
         let u = &mut self.units[i];
+        if let (Order::Idle, Some(leg)) = (u.order, u.patrol_leg) {
+            let (x, y) = DRONE_WAYPOINTS[leg];
+            let x = if u.side == 0 { x } else { 1.0 - x };
+            u.order = Order::Move { goal: (x * MW as f32 * TS, y * MH as f32 * TS), attack: false };
+            u.patrol_leg = Some((leg + 1) % DRONE_WAYPOINTS.len());
+        }
         if let Order::Move { goal, .. } = u.order {
             let d = dist(u.pos, goal);
             let step = DRONE_SPEED * TS * DT;
@@ -615,11 +662,21 @@ impl World {
     /// 目標へ進む。動いたら true
     fn move_toward(&mut self, i: usize, goal: (f32, f32), spec: &TankSpec) -> bool {
         let side = self.units[i].side;
+        let margin = TS * 0.05;
+        let goal = (goal.0.clamp(margin, MW as f32 * TS - margin),
+            goal.1.clamp(margin, MH as f32 * TS - margin));
         let gt = tile_of(goal);
         let cur = self.units[i].tile();
-        if self.units[i].path.is_empty() || self.units[i].repath <= 0.0 {
+        if self.units[i].repath <= 0.0 {
             let p = self.map.path(cur, gt, spec.weight, &self.extra_cost(side));
             let u = &mut self.units[i];
+            if p.is_empty() && cur != gt {
+                if matches!(u.order, Order::Move { .. }) {
+                    u.order = Order::Idle;
+                }
+                u.repath = 0.5;
+                return false;
+            }
             u.path = p;
             u.repath = 3.0 + (i % 7) as f32 * 0.2;
         }
@@ -629,23 +686,14 @@ impl World {
             match u.path.first().copied() {
                 None => {
                     // 経路の終わり
-                    if dist(u.pos, goal) < TS * 0.45 || cur == gt {
+                    if dist(u.pos, goal) < TS * 0.45 {
                         if let Order::Move { .. } = u.order {
                             u.order = Order::Idle;
                         }
                         return false;
                     }
-                    if tile_of(goal) == cur {
+                    if gt == cur {
                         break goal;
-                    }
-                    // 着けない
-                    if u.repath > 0.5 {
-                        u.repath = 0.5;
-                    }
-                    if let Order::Move { .. } = u.order {
-                        if u.repath <= 0.0 {
-                            u.order = Order::Idle;
-                        }
                     }
                     return false;
                 }
@@ -655,6 +703,9 @@ impl World {
                     let wp = if last && tile_of(goal) == t { goal } else { c };
                     if dist(u.pos, wp) < TS * 0.3 {
                         u.path.remove(0);
+                        if u.path.is_empty() && cur != gt {
+                            u.repath = 0.0;
+                        }
                         continue;
                     }
                     break wp;
@@ -675,8 +726,10 @@ impl World {
             return false;
         }
         let terr = self.map.at(cur.0, cur.1);
+        let position = self.units[i].pos;
+        let route_angle = (next.1 - position.1).atan2(next.0 - position.0);
+        let a = self.avoid_tank(i, route_angle).unwrap_or(route_angle);
         let u = &mut self.units[i];
-        let a = (next.1 - u.pos.1).atan2(next.0 - u.pos.0);
         let hrate = match spec.weight {
             Weight::Light => 2.6,
             Weight::Medium => 2.0,
@@ -685,16 +738,48 @@ impl World {
         u.hull = turn_toward(u.hull, a, hrate * DT);
         let align = angle_diff(a, u.hull).cos().max(0.0);
         let sp = spec.speed * TS * terr.speed(spec.weight).max(0.15) * align * align * DT;
-        let d = dist(u.pos, next);
-        let step = sp.min(d);
-        let np = (u.pos.0 + u.hull.cos() * step, u.pos.1 + u.hull.sin() * step);
-        let ntile = tile_of(np);
-        if self.map.at(ntile.0, ntile.1).passable() {
-            u.pos = np;
-        } else {
-            u.pos = (u.pos.0 + a.cos() * step, u.pos.1 + a.sin() * step);
+        let step = sp.min(dist(position, next));
+        let hull = u.hull;
+        if step <= 0.01 {
+            return false;
         }
-        step > 0.01
+        for heading in [hull, route_angle] {
+            let p = (position.0 + heading.cos() * step, position.1 + heading.sin() * step);
+            if self.free_for(i, p) {
+                self.units[i].pos = p;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// 前方に実車がいる場合は、地形が許す側から追い越す。
+    fn avoid_tank(&self, i: usize, route: f32) -> Option<f32> {
+        let pos = self.units[i].pos;
+        let forward = (route.cos(), route.sin());
+        let lateral = (-forward.1, forward.0);
+        let (obstacle, offset) = self.units.iter().enumerate()
+            .filter(|(j, unit)| *j != i && unit.alive && unit.kind == Kind::Tank)
+            .filter_map(|(_, unit)| {
+                let delta = (unit.pos.0 - pos.0, unit.pos.1 - pos.1);
+                let ahead = delta.0 * forward.0 + delta.1 * forward.1;
+                let across = delta.0 * lateral.0 + delta.1 * lateral.1;
+                (ahead > 0.0 && ahead < TS * 1.25 && across.abs() < TS * 0.72)
+                    .then_some((ahead, across, unit.pos))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, across, obstacle)| (obstacle, across))?;
+        let preferred = if offset < -TS * 0.10 { 1.0 } else { -1.0 };
+        for sign in [preferred, -preferred] {
+            let shift = sign * TS * 0.88;
+            let goal = (obstacle.0 + lateral.0 * shift, obstacle.1 + lateral.1 * shift);
+            let angle = (goal.1 - pos.1).atan2(goal.0 - pos.0);
+            let near = (pos.0 + angle.cos() * TS * 0.5, pos.1 + angle.sin() * TS * 0.5);
+            if self.free_for(i, goal) && self.free_for(i, near) {
+                return Some(angle);
+            }
+        }
+        None
     }
 
     pub fn target_pos(&self, t: Target) -> (f32, f32) {
@@ -773,16 +858,7 @@ impl World {
                     let mut dmg;
                     let mut pen = true;
                     if e.kind == Kind::Tank {
-                        let es = e.spec();
-                        let from = (pos.1 - e.pos.1).atan2(pos.0 - e.pos.0);
-                        let rel = angle_diff(from, e.hull).abs();
-                        let armor = if rel < 0.9 {
-                            es.front
-                        } else if rel > 2.3 {
-                            es.rear()
-                        } else {
-                            es.side
-                        };
+                        let armor = e.armor_toward(pos);
                         let p = spec.pen * (1.0 - 0.3 * r) * self.rng.range(0.8, 1.2);
                         dmg = spec.dmg * DAMAGE_SCALE * self.rng.range(0.85, 1.15);
                         if p < armor {
@@ -890,23 +966,22 @@ impl World {
         for a in 0..n {
             for b in a + 1..n {
                 let (ua, ub) = (&self.units[a], &self.units[b]);
-                if !ua.alive || !ub.alive || ua.kind == Kind::Drone || ub.kind == Kind::Drone {
+                if !ua.alive || !ub.alive || ua.kind != Kind::Tank || ub.kind != Kind::Tank {
                     continue;
                 }
                 let d = dist(ua.pos, ub.pos);
                 if d >= min {
                     continue;
                 }
-                let (dx, dy) = if d < 0.01 { (((a * 7 + b) % 5) as f32 - 2.0 + 0.5, 1.0) } else { ((ub.pos.0 - ua.pos.0) / d, (ub.pos.1 - ua.pos.1) / d) };
-                let push = (min - d) * 0.5;
-                let (fa, fb) = match (ua.kind == Kind::Decoy, ub.kind == Kind::Decoy) {
-                    (true, true) => continue,
-                    (true, false) => (0.0, 2.0),
-                    (false, true) => (2.0, 0.0),
-                    _ => (1.0, 1.0),
+                let (dx, dy) = if d < 0.01 {
+                    let angle = ((a * 7 + b) % 8) as f32 * std::f32::consts::FRAC_PI_4;
+                    (angle.cos(), angle.sin())
+                } else {
+                    ((ub.pos.0 - ua.pos.0) / d, (ub.pos.1 - ua.pos.1) / d)
                 };
-                let pa = (ua.pos.0 - dx * push * fa, ua.pos.1 - dy * push * fa);
-                let pb = (ub.pos.0 + dx * push * fb, ub.pos.1 + dy * push * fb);
+                let push = (min - d) * 0.5;
+                let pa = separation_position(ua, (-dx * push, -dy * push));
+                let pb = separation_position(ub, (dx * push, dy * push));
                 if self.free_for(a, pa) {
                     self.units[a].pos = pa;
                 }
@@ -1201,6 +1276,65 @@ mod tests {
         assert_eq!(w.phase, Phase::Over);
         assert_eq!(w.winner, Some(0));
         assert_eq!(w.reason, Some(EndReason::Annihilation));
+    }
+
+    #[test]
+    fn drone_patrol_advances_through_waypoints_and_accepts_manual_override() {
+        let mut w = world();
+        w.start_battle();
+        let drone = w.drone(0).unwrap();
+        assert!(!w.drone_patrolling(0));
+        w.set_drone_patrol(0, true);
+        for (x, y) in DRONE_WAYPOINTS.into_iter().chain([DRONE_WAYPOINTS[0]]) {
+            w.update_drone(drone);
+            let goal = (x * MW as f32 * TS, y * MH as f32 * TS);
+            assert_eq!(w.units[drone].order, Order::Move { goal, attack: false });
+            w.units[drone].pos = goal;
+            w.update_drone(drone);
+            assert_eq!(w.units[drone].order, Order::Idle);
+        }
+        let manual = Order::Move { goal: center((9, 9)), attack: false };
+        w.order(drone, manual);
+        assert!(!w.drone_patrolling(0));
+        w.update_drone(drone);
+        assert_eq!(w.units[drone].order, manual);
+        w.set_drone_patrol(0, true);
+        w.set_drone_patrol(0, false);
+        assert!(!w.drone_patrolling(0));
+        assert_eq!(w.units[drone].order, Order::Idle);
+    }
+
+    #[test]
+    fn tanks_get_past_decoys_and_parked_tanks_without_crossing_blocked_ground() {
+        for (blocker, narrow) in [(Kind::Decoy, false), (Kind::Tank, false), (Kind::Tank, true)] {
+            let mut w = world();
+            w.map.t.fill(if narrow { Terrain::Water } else { Terrain::Plain });
+            for x in 0..MW {
+                w.map.t[idx(x, 20)] = Terrain::Road;
+            }
+            let start = center((8, 20));
+            let block = center((10, 20));
+            w.units.push(World::new_unit(0, Kind::Tank, Nation::Germany, 0, start));
+            w.units.push(World::new_unit(0, blocker, Nation::Germany, 0, block));
+            w.units.push(World::new_unit(1, Kind::Tank, Nation::Germany, 0, center((70, 20))));
+            w.start_battle();
+            w.order(0, Order::Move { goal: center((15, 20)), attack: false });
+            let mut sidestep: f32 = 0.0;
+            for _ in 0..(12.0 / DT) as usize {
+                w.step();
+                let (x, y) = w.units[0].tile();
+                assert!(w.map.at(x, y).passable());
+                sidestep = sidestep.max((w.units[0].pos.1 - start.1).abs());
+            }
+            assert!(w.units[0].pos.0 > block.0 + TS, "{blocker:?}, narrow={narrow}");
+            if blocker == Kind::Decoy {
+                assert_eq!(w.units[1].pos, block);
+                assert!(sidestep < 1.0);
+            }
+            if blocker == Kind::Tank && !narrow {
+                assert!(sidestep > TS * 0.2);
+            }
+        }
     }
 
     #[test]

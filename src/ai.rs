@@ -175,7 +175,6 @@ pub struct Commander {
     wait: f32,
     /// 迂回路（0=正面 1=北 2=南）
     route: u8,
-    drone_wp: usize,
     /// 防御に残す戦車
     defenders: Vec<usize>,
 }
@@ -185,7 +184,7 @@ impl Commander {
         let mut rng = Rng::new(seed as u64 ^ 0xa11);
         let wait = rng.range(8.0, 25.0) / aggression.max(0.3);
         let route = rng.below(3) as u8;
-        Commander { side, think: 0.0, rng, wait, route, drone_wp: 0, defenders: Vec::new() }
+        Commander { side, think: 0.0, rng, wait, route, defenders: Vec::new() }
     }
 
     pub fn update(&mut self, w: &mut World, dt: f32) {
@@ -202,7 +201,8 @@ impl Commander {
         let foe = 1 - side;
         let my_base = w.base_pos(side);
         let foe_base = w.base_pos(foe);
-        let tanks: Vec<usize> = (0..w.units.len()).filter(|&i| w.units[i].alive && w.units[i].side == side && w.units[i].kind == Kind::Tank).collect();
+        w.set_drone_patrol(side, true);
+        let tanks: Vec<usize> = (0..w.units.len()).filter(|&i| w.units[i].alive && w.units[i].side == side && w.units[i].kind == Kind::Tank && w.units[i].general.is_none()).collect();
         if tanks.is_empty() {
             return;
         }
@@ -217,16 +217,6 @@ impl Commander {
             let mut by: Vec<usize> = tanks.clone();
             by.sort_by(|&a, &b| dist(w.units[a].pos, my_base).partial_cmp(&dist(w.units[b].pos, my_base)).unwrap_or(std::cmp::Ordering::Equal));
             self.defenders = by.into_iter().take(n).collect();
-        }
-        // ドローン：敵陣を巡回
-        if let Some(d) = w.drone(side) {
-            if w.units[d].order == Order::Idle {
-                let fx = |f: f32| if side == 0 { f } else { 1.0 - f };
-                let wps = [(0.55, 0.25), (0.7, 0.5), (0.55, 0.75), (0.85, 0.3), (0.85, 0.7), (0.45, 0.5)];
-                let (x, y) = wps[self.drone_wp % wps.len()];
-                self.drone_wp += 1;
-                w.order(d, Order::Move { goal: (fx(x) * MW as f32 * TS, y * MH as f32 * TS), attack: false });
-            }
         }
         // 防御：脅威があれば迎え撃つ、無ければ基地の周りに
         for &i in &self.defenders {

@@ -14,6 +14,8 @@ PORTRAITS = (
     "kai_kuroda", "daisuke_shiba", "naoto_kagami",
     "sena_kirihara", "lucas_wren",
     "isuzu_takamine", "emil_falk",
+    "hotaru_amane", "nazuna_shiraishi",
+    "viktor_crow",
 )
 
 
