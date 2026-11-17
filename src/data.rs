@@ -241,9 +241,9 @@ pub const BUDGETS: [Budget; 3] = [Budget::Small, Budget::Medium, Budget::Large];
 impl Budget {
     pub fn points(self) -> u32 {
         match self {
-            Budget::Small => 1500,
-            Budget::Medium => 3000,
-            Budget::Large => 5500,
+            Budget::Small => 3000,
+            Budget::Medium => 6000,
+            Budget::Large => 11000,
         }
     }
     pub fn name(self) -> &'static str {
