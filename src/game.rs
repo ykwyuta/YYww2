@@ -4,7 +4,8 @@
 
 use crate::ai::{self, Commander};
 use crate::data::{Budget, Nation, TankSpec, Weight, BUDGETS, DECOY_COST, NATIONS, TEETH_COST};
-use crate::gfx::{Font, Gfx, Texture};
+use crate::generals::{self, GeneralCommand, GENERALS, PORTRAIT_SIZE};
+use crate::gfx::{Bitmap, Font, Gfx, Texture};
 
 use crate::lang;
 use crate::map::{center, idx, in_zone, tile_of, Field, FIELDS, MH, MW, TS};
@@ -93,6 +94,8 @@ enum Act {
     Auto,
     Clear,
     Begin,
+    Generals,
+    AssignGeneral(Option<usize>),
     Pause,
     Speed(u32),
     Help,
@@ -125,6 +128,11 @@ pub struct Game {
     seed: u32,
     world: World,
     commander: Commander,
+    general_command: GeneralCommand,
+    show_generals: bool,
+    assign_to: Option<usize>,
+    portraits: [Option<Bitmap>; GENERALS.len()],
+    portrait_gen: Option<u32>,
     terrain: Option<Texture>,
     terrain_key: (Field, u32),
     fog: Option<Texture>,
@@ -194,6 +202,11 @@ impl Game {
             seed,
             world,
             commander,
+            general_command: GeneralCommand::default(),
+            show_generals: false,
+            assign_to: Some(0),
+            portraits: std::array::from_fn(|_| None),
+            portrait_gen: None,
             terrain: None,
             terrain_key: (Field::Kursk, 0),
             fog: None,
@@ -309,6 +322,10 @@ impl Game {
         self.world.skill = [1.0, skill];
         ai::prepare(&mut self.world, 1, self.seed ^ 0x51ed);
         self.commander = Commander::new(1, self.seed ^ 0xc0, aggr);
+        self.general_command = GeneralCommand::default();
+        self.show_generals = false;
+        self.assign_to = Some(0);
+        self.ldown = None;
         self.screen = Screen::Battle;
         self.sel.clear();
         self.log.clear();
@@ -381,6 +398,7 @@ impl Game {
                 let mut steps = 0;
                 while self.acc >= DT && steps < 12 {
                     self.commander.update(&mut self.world, DT);
+                    self.general_command.update(&mut self.world);
                     self.world.step();
                     self.acc -= DT;
                     steps += 1;
@@ -403,7 +421,7 @@ impl Game {
             }
             self.pings.retain(|p| p.1 < 2.5);
             let w = &self.world;
-            self.sel.retain(|&i| w.units.get(i).is_some_and(|u| u.alive && u.side == 0 && u.kind != Kind::Decoy));
+            self.sel.retain(|&i| w.units.get(i).is_some_and(Unit::manually_controlled));
             for l in self.log.iter_mut() {
                 l.age += dt;
             }
@@ -550,6 +568,7 @@ impl Game {
             }
             let wp = self.to_world(p);
             match self.world.phase {
+                Phase::Prep if self.show_generals => self.ldown = Some(p),
                 Phase::Prep => self.apply_tool(wp),
                 Phase::Battle => {
                     if self.attack_mode && !self.sel.is_empty() {
@@ -573,7 +592,9 @@ impl Game {
             };
             match self.world.phase {
                 Phase::Prep => {
-                    self.world.remove_at(0, wp);
+                    if !self.show_generals {
+                        self.world.remove_at(0, wp);
+                    }
                 }
                 Phase::Battle => {
                     let am = self.attack_mode;
@@ -599,10 +620,14 @@ impl Game {
         if self.in_minimap(d) {
             return;
         }
+        let drag = (p.0 - d.0).abs() > 8.0 || (p.1 - d.1).abs() > 8.0;
+        if self.world.phase == Phase::Prep && self.show_generals && !self.show_help && !self.over_ui(p) {
+            self.delegate_at(self.to_world(d), self.to_world(p), drag);
+            return;
+        }
         if self.world.phase != Phase::Battle {
             return;
         }
-        let drag = (p.0 - d.0).abs() > 8.0 || (p.1 - d.1).abs() > 8.0;
         if drag {
             // 範囲選択
             let (a, c) = (self.to_world(d), self.to_world(p));
@@ -611,7 +636,7 @@ impl Game {
             let picked: Vec<usize> = (0..self.world.units.len())
                 .filter(|&i| {
                     let u = &self.world.units[i];
-                    u.alive && u.side == 0 && u.kind == Kind::Tank && u.pos.0 >= x0 && u.pos.0 <= x1 && u.pos.1 >= y0 && u.pos.1 <= y1
+                    u.manually_controlled() && u.kind == Kind::Tank && u.pos.0 >= x0 && u.pos.0 <= x1 && u.pos.1 >= y0 && u.pos.1 <= y1
                 })
                 .collect();
             self.sel = picked;
@@ -647,6 +672,8 @@ impl Game {
             0x1b => {
                 if self.show_help {
                     self.show_help = false;
+                } else if self.show_generals {
+                    self.act(Act::Generals);
                 } else if self.attack_mode {
                     self.attack_mode = false;
                 } else {
@@ -685,9 +712,31 @@ impl Game {
         (0..self.world.units.len())
             .filter(|&i| {
                 let u = &self.world.units[i];
-                u.alive && u.side == 0 && u.kind != Kind::Decoy && dist(u.pos, wp) < r
+                u.manually_controlled() && dist(u.pos, wp) < r
             })
             .min_by(|&a, &b| dist(self.world.units[a].pos, wp).partial_cmp(&dist(self.world.units[b].pos, wp)).unwrap_or(std::cmp::Ordering::Equal))
+    }
+
+    fn delegate_at(&mut self, from: (f32, f32), to: (f32, f32), drag: bool) {
+        let eligible = self.world.units.iter().enumerate().filter(|(_, u)| {
+            u.alive && u.side == 0 && u.kind == Kind::Tank
+        });
+        if drag {
+            let (x0, x1) = (from.0.min(to.0), from.0.max(to.0));
+            let (y0, y1) = (from.1.min(to.1), from.1.max(to.1));
+            let units: Vec<_> = eligible.filter(|(_, u)| {
+                (x0..=x1).contains(&u.pos.0) && (y0..=y1).contains(&u.pos.1)
+            }).map(|(i, _)| i).collect();
+            for i in units {
+                self.world.assign_general(i, self.assign_to);
+            }
+        } else if let Some((i, _)) = eligible
+            .map(|(i, u)| (i, dist(u.pos, to)))
+            .filter(|(_, d)| *d < TS * 0.70)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+        {
+            self.world.assign_general(i, self.assign_to);
+        }
     }
 
     fn apply_tool(&mut self, wp: (f32, f32)) {
@@ -743,7 +792,12 @@ impl Game {
             (k != usize::MAX && self.world.teeth[k].alive && self.world.teeth[k].side == 1 && self.world.teeth[k].seen[0]).then_some(k)
         };
         let target = enemy.map(Target::Unit).or(teeth.map(Target::Teeth));
-        let sel = self.sel.clone();
+        let sel: Vec<_> = self.sel.iter().copied()
+            .filter(|&i| self.world.units.get(i).is_some_and(Unit::manually_controlled))
+            .collect();
+        if sel.is_empty() {
+            return;
+        }
         let tanks: Vec<usize> = sel.iter().copied().filter(|&i| self.world.units[i].kind == Kind::Tank).collect();
         for &i in &sel {
             if self.world.units[i].kind == Kind::Drone {
@@ -819,13 +873,27 @@ impl Game {
                 ai::prepare(&mut self.world, 0, self.seed ^ (self.clock * 1000.0) as u32);
             }
             Act::Clear => self.world.clear_side(0),
+            Act::Generals if self.world.phase == Phase::Prep => {
+                self.show_generals = !self.show_generals;
+                self.ldown = None;
+                self.painting = false;
+            }
+            Act::AssignGeneral(id) if self.world.phase == Phase::Prep && self.show_generals => {
+                self.assign_to = id;
+            }
+            Act::Generals | Act::AssignGeneral(_) => {}
             Act::Begin => {
+                if self.world.phase != Phase::Prep {
+                    return;
+                }
                 if self.world.tank_count(0) == 0 {
                     self.notify(t!("戦車を1両以上配置してください", "Deploy at least one tank", "请至少部署一辆坦克"));
                     return;
                 }
+                self.show_generals = false;
+                self.ldown = None;
                 self.world.start_battle();
-                self.sel = (0..self.world.units.len()).filter(|&i| self.world.units[i].side == 0 && self.world.units[i].kind == Kind::Tank && self.world.units[i].alive).collect();
+                self.act(Act::AllTanks);
             }
             Act::Pause => self.paused = !self.paused,
             Act::Speed(s) => self.speed = s,
@@ -844,8 +912,10 @@ impl Game {
                 }
             }
             Act::Stop => {
-                for &i in &self.sel.clone() {
-                    self.world.order(i, Order::Idle);
+                for &i in &self.sel {
+                    if self.world.units.get(i).is_some_and(Unit::manually_controlled) {
+                        self.world.order(i, Order::Idle);
+                    }
                 }
             }
             Act::Drone => {
@@ -856,7 +926,9 @@ impl Game {
                 }
             }
             Act::AllTanks => {
-                self.sel = (0..self.world.units.len()).filter(|&i| self.world.units[i].side == 0 && self.world.units[i].kind == Kind::Tank && self.world.units[i].alive).collect();
+                self.sel = self.world.units.iter().enumerate()
+                    .filter(|(_, u)| u.kind == Kind::Tank && u.manually_controlled())
+                    .map(|(i, _)| i).collect();
             }
             Act::Again => {
                 self.seed = self.seed.wrapping_mul(1664525).wrapping_add(1013904223) | 1;
@@ -894,7 +966,8 @@ impl Game {
                 self.render_labels();
                 self.render_hud();
                 if self.world.phase == Phase::Prep {
-                    self.render_shop();
+                    if self.show_generals { self.render_generals(); }
+                    else { self.render_shop(); }
                 } else {
                     self.render_selection();
                 }
@@ -1236,7 +1309,7 @@ impl Game {
             }
         }
         // 準備：置く物の予告
-        if w.phase == Phase::Prep && screen == Screen::Battle && !over && !touch {
+        if w.phase == Phase::Prep && screen == Screen::Battle && !self.show_generals && !over && !touch {
             let wp = mouse_w;
             let t = tile_of(wp);
             let c = center(t);
@@ -1480,6 +1553,10 @@ impl Game {
         x -= mw + 6.0;
         self.button([x - 34.0, 5.0, x, bar - 5.0], "?", Act::Help, self.show_help);
         x -= 40.0;
+        if self.world.phase == Phase::Prep {
+            self.button([x - 100.0, 5.0, x, bar - 5.0],
+                t!("将軍", "Generals", "将军"), Act::Generals, self.show_generals);
+        }
         if self.world.phase == Phase::Battle {
             for s in (1..=3).rev() {
                 self.button([x - 38.0, 5.0, x, bar - 5.0], &format!("x{}", s), Act::Speed(s), self.speed == s);
@@ -1550,6 +1627,16 @@ impl Game {
             let decoy_tag = u.kind == Kind::Decoy && (u.side == 0 || u.revealed);
             if decoy_tag && self.zoom > 0.7 {
                 items.push((t!("デコイ", "Decoy", "诱饵").to_string(), u.pos, [1.0, 0.9, 0.5, 0.9]));
+            } else if let Some(id) = u.general {
+                if hover || self.zoom > 0.57 || self.show_generals {
+                    let general = &GENERALS[id];
+                    let name = if hover {
+                        format!("G{:02}  {}", id + 1, general.name())
+                    } else {
+                        format!("G{:02}", id + 1)
+                    };
+                    items.push((name, u.pos, general.strategy.color()));
+                }
             } else if hover || (self.sel.len() == 1 && self.sel[0] == j) {
                 let name = if u.side == 1 { tf!("敵 {}", "Enemy {}", "敌 {}", u.spec().name()) } else { u.spec().name().to_string() };
                 items.push((name, u.pos, with_a(side_color(u.side), 0.95)));
@@ -1559,6 +1646,95 @@ impl Game {
             let sp = self.to_screen((p.0, p.1 + TS * 0.55));
             self.gfx.text_shadow(&s, sp.0 - 90.0, sp.1, 180.0, 18.0, Font::NormalCenter, c);
         }
+    }
+
+    fn render_generals(&mut self) {
+        if self.portrait_gen != Some(self.gfx.d2d_gen) {
+            for (i, portrait) in self.portraits.iter_mut().enumerate() {
+                let pixels = generals::portrait_pixels(i);
+                *portrait = self.gfx.create_bitmap(PORTRAIT_SIZE, PORTRAIT_SIZE, &pixels);
+            }
+            self.portrait_gen = Some(self.gfx.d2d_gen);
+        }
+
+        let compact = self.gfx.compact;
+        let w = self.gfx.width as f32;
+        let bottom = (self.gfx.height as f32 - 8.0).min(610.0);
+        let width = if compact { 410.0 } else { 442.0 };
+        let left = w - width - 8.0;
+        let top = 44.0;
+        self.panel([left, top, left + width, bottom]);
+        let x = left + 10.0;
+        let inner = width - 20.0;
+        self.gfx.text(t!("将軍に指揮を委任", "Delegate command", "委任指挥"),
+            x, top + 8.0, inner, 23.0, Font::Big, GOLD);
+        let hint = if self.touch {
+            t!("将軍を選び、配置済みの戦車をタップ。", "Choose a general, then tap your deployed tanks.", "选择将军后，点按已部署的坦克。")
+        } else {
+            t!("将軍を選び、配置済みの戦車をクリック／範囲指定。", "Choose a general, then click or box-select deployed tanks.", "选择将军后，点击或框选已部署的坦克。")
+        };
+        self.gfx.text(hint, x, top + 33.0, inner, 24.0, Font::Small, TEXT);
+
+        let mut counts = [0; GENERALS.len()];
+        for unit in &self.world.units {
+            if let Some(i) = unit.general.filter(|_| unit.alive) {
+                counts[i] += 1;
+            }
+        }
+        let grid_top = top + 61.0;
+        let footer = bottom - 45.0;
+        let details = footer - 94.0;
+        let gap = 5.0;
+        let columns = if compact { 6 } else { 4 };
+        let rows = GENERALS.len().div_ceil(columns);
+        let cw = (inner - gap * (columns - 1) as f32) / columns as f32;
+        let ch = ((details - grid_top - 7.0) / rows as f32).min(116.0);
+        for (i, general) in GENERALS.iter().enumerate() {
+            let bx = x + (i % columns) as f32 * (cw + gap);
+            let by = grid_top + (i / columns) as f32 * ch;
+            let r = [bx, by, bx + cw, by + ch - gap];
+            let selected = self.assign_to == Some(i);
+            let col = general.strategy.color();
+            let bg = if selected { [0.29, 0.25, 0.16, 1.0] }
+                else if self.hovered(r) { [0.22, 0.23, 0.18, 1.0] }
+                else { [0.13, 0.15, 0.12, 1.0] };
+            self.gfx.fill_round(r[0], r[1], r[2], r[3], 4.0, bg);
+            self.gfx.stroke_round(r[0], r[1], r[2], r[3], 4.0, if selected { 2.0 } else { 1.0 }, if selected { GOLD } else { EDGE });
+            let size = (ch - 29.0).min(cw - 9.0).max(10.0);
+            let px = bx + (cw - size) / 2.0;
+            if let Some(img) = &self.portraits[i] {
+                self.gfx.draw_bitmap(img, px, by + 4.0, px + size, by + 4.0 + size);
+            }
+            self.gfx.fill_rect(bx + 4.0, by + 4.0, bx + 31.0, by + 20.0, PANEL);
+            self.gfx.text(&format!("G{:02}", i + 1), bx + 6.0, by + 4.0, 25.0, 16.0, Font::Small, col);
+            if counts[i] != 0 {
+                self.gfx.fill_rect(r[2] - 22.0, by + 4.0, r[2] - 4.0, by + 22.0, PANEL);
+                self.gfx.text(&counts[i].to_string(), r[2] - 22.0, by + 4.0, 18.0, 18.0, Font::NormalCenter, GOLD);
+            }
+            let short = general.name().split([' ', '・', '·']).next().unwrap_or(general.name());
+            self.gfx.text(short, bx + 5.0, r[3] - 19.0, cw - 10.0, 16.0, Font::NormalCenter, TEXT);
+            self.gfx.fill_rect(bx + 5.0, r[3] - 3.0, r[2] - 5.0, r[3] - 2.0, col);
+            self.buttons.push(Btn { r, act: Act::AssignGeneral(Some(i)) });
+        }
+        let header = self.assign_to.map_or_else(
+            || t!("直轄部隊", "Direct command", "直属部队").to_string(),
+            |i| tf!("{}　委任 {} 両", "{}  ·  {} assigned", "{}  ·  委任 {} 辆", GENERALS[i].name(), counts[i])
+        );
+        self.gfx.text(&header, x, details, inner, 22.0, Font::Big, GOLD);
+        if let Some(i) = self.assign_to {
+            let strategy = GENERALS[i].strategy;
+            self.gfx.text(strategy.name(), x, details + 23.0, inner, 19.0, Font::Normal, strategy.color());
+            self.gfx.text(strategy.description(), x, details + 44.0, inner, 33.0, Font::Small, TEXT);
+        } else {
+            self.gfx.text(t!("指定した戦車は開戦後も自分で操作します。", "Marked tanks remain under your manual control in battle.", "标记的坦克在开战后仍由你直接控制。"),
+                x, details + 23.0, inner, 34.0, Font::Small, TEXT);
+        }
+        let third = (inner - 2.0 * gap) / 3.0;
+        self.button([x, footer, x + third, bottom - 7.0], t!("配置に戻る", "Deployment", "返回部署"), Act::Generals, false);
+        self.button([x + third + gap, footer, x + 2.0 * third + gap, bottom - 7.0],
+            t!("直轄へ戻す", "Direct control", "恢复直属"), Act::AssignGeneral(None), self.assign_to.is_none());
+        self.button([x + 2.0 * (third + gap), footer, x + inner, bottom - 7.0],
+            t!("戦闘開始 ▶", "Begin battle ▶", "开始战斗 ▶"), Act::Begin, true);
     }
 
     fn render_shop(&mut self) {
@@ -1680,10 +1856,15 @@ impl Game {
         let bx = self.minimap[2] + 14.0;
         let bw = if compact { 74.0 } else { 96.0 };
         let by = h - 40.0;
+        let all_label = if self.world.units.iter().any(|u| u.alive && u.general.is_some()) {
+            t!("直轄戦車 Q", "Direct Q", "直属坦克 Q")
+        } else {
+            t!("全戦車 Q", "All tanks Q", "全部坦克 Q")
+        };
         let acts = [
             (t!("攻撃移動 A", "Attack A", "攻击移动 A"), Act::AttackMode, self.attack_mode),
             (t!("停止 S", "Stop S", "停止 S"), Act::Stop, false),
-            (t!("全戦車 Q", "All tanks Q", "全部坦克 Q"), Act::AllTanks, false),
+            (all_label, Act::AllTanks, false),
             (t!("ドローン D", "Drone D", "无人机 D"), Act::Drone, false),
         ];
         for (k, (label, a, on)) in acts.into_iter().enumerate() {

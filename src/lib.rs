@@ -12,6 +12,7 @@ mod lang;
 mod ai;
 mod data;
 mod game;
+mod generals;
 mod map;
 mod rng;
 mod sim;

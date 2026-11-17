@@ -5,6 +5,7 @@
 //! - 相手の基地を占領するか、相手の戦車をすべて撃破すれば勝ち。
 
 use crate::data::{Nation, TankSpec, Terrain, Weight, DECOY_COST, TEETH_COST, TEETH_HP};
+use crate::generals::GENERALS;
 use crate::map::{center, idx, in_zone, inside, tile_of, Field, Map, MH, MW, TS};
 use crate::rng::Rng;
 
@@ -48,6 +49,7 @@ pub enum Order {
 pub struct Unit {
     pub side: usize,
     pub kind: Kind,
+    pub general: Option<usize>,
     pub nation: Nation,
     /// 戦車の種類（デコイは見せかけの種類）
     pub ti: usize,
@@ -75,6 +77,10 @@ pub struct Unit {
 }
 
 impl Unit {
+    pub fn manually_controlled(&self) -> bool {
+        self.alive && self.side == 0 && self.kind != Kind::Decoy && self.general.is_none()
+    }
+
     pub fn spec(&self) -> &'static TankSpec {
         &self.nation.tanks()[self.ti]
     }
@@ -268,6 +274,7 @@ impl World {
         Unit {
             side,
             kind,
+            general: None,
             nation,
             ti,
             pos,
@@ -367,6 +374,19 @@ impl World {
 
     pub fn tank_count(&self, side: usize) -> usize {
         self.units.iter().filter(|u| u.alive && u.side == side && u.kind == Kind::Tank).count()
+    }
+
+    /// 準備中の自軍戦車に将軍を任命する。None で直轄に戻す。
+    pub fn assign_general(&mut self, index: usize, general: Option<usize>) -> bool {
+        if self.phase != Phase::Prep || general.is_some_and(|id| id >= GENERALS.len()) {
+            return false;
+        }
+        let Some(unit) = self.units.get_mut(index) else { return false };
+        if !unit.alive || unit.side != 0 || unit.kind != Kind::Tank || unit.general == general {
+            return false;
+        }
+        unit.general = general;
+        true
     }
 
     /// 戦闘を始める（ドローンが基地から飛び立つ）
