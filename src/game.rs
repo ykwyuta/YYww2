@@ -21,6 +21,9 @@ const EDGE: C = [0.55, 0.50, 0.34, 1.0];
 const BLUE: C = [0.35, 0.62, 1.0, 1.0];
 const RED: C = [1.0, 0.36, 0.30, 1.0];
 const GOOD: C = [0.55, 0.92, 0.55, 1.0];
+const TITLE_SIZE: (u32, u32) = (1280, 720);
+const TITLE_RGB: &[u8; (TITLE_SIZE.0 * TITLE_SIZE.1 * 3) as usize] =
+    include_bytes!("../assets/branding/title.rgb");
 
 fn side_color(side: usize) -> C {
     if side == 0 {
@@ -42,6 +45,30 @@ fn shade(c: C, k: f32) -> C {
 enum Screen {
     Title,
     Battle,
+}
+
+struct TitleLayout {
+    compact: bool,
+    left: f32,
+    top: f32,
+    menu_width: f32,
+    preview: [f32; 4],
+}
+
+impl TitleLayout {
+    fn new(gfx: &Gfx) -> Self {
+        let (w, h) = (gfx.width as f32, gfx.height as f32);
+        let compact = gfx.compact || w < 1080.0 || h < 610.0;
+        let left = (w * 0.054).clamp(16.0, 76.0);
+        let top = if compact { (h * 0.045).clamp(12.0, 26.0) } else { (h * 0.10).clamp(34.0, 80.0) };
+        let menu_width = if compact { (w * 0.57).min(610.0) } else { (w * 0.46).min(640.0) };
+        let preview_width = if compact { (w * 0.26).min(260.0) } else { (w * 0.27).min(370.0) };
+        let right = w - left;
+        let bottom = h - if compact { 22.0 } else { 38.0 };
+        let preview_height = (preview_width - 12.0) * MH as f32 / MW as f32 + 70.0;
+        let preview = [right - preview_width, bottom - preview_height, right, bottom];
+        Self { compact, left, top, menu_width, preview }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -102,6 +129,8 @@ pub struct Game {
     terrain_key: (Field, u32),
     fog: Option<Texture>,
     fog_px: Vec<u32>,
+    atlas: Option<Texture>,
+    title_art: Option<Texture>,
     cam: (f32, f32),
     zoom: f32,
     mouse: (f32, f32),
@@ -152,6 +181,10 @@ impl Game {
         let seed = crate::platform::random_u32() | 1;
         let world = World::new(Field::Kursk, seed, Budget::Medium.points());
         let commander = Commander::new(1, seed, 1.0);
+        let title_pixels: Vec<_> = TITLE_RGB.chunks_exact(3)
+            .map(|p| u32::from_le_bytes([p[0], p[1], p[2], 255]))
+            .collect();
+        let title_art = gfx.create_texture(TITLE_SIZE.0, TITLE_SIZE.1, &title_pixels).ok();
         let mut g = Game {
             gfx,
             screen: Screen::Title,
@@ -165,6 +198,8 @@ impl Game {
             terrain_key: (Field::Kursk, 0),
             fog: None,
             fog_px: vec![0; (MW * MH) as usize],
+            atlas: None,
+            title_art,
             cam: (MW as f32 * TS / 2.0, MH as f32 * TS / 2.0),
             zoom: 0.5,
             mouse: (0.0, 0.0),
@@ -241,10 +276,19 @@ impl Game {
             return;
         }
         let (w, h, px) = self.world.map.render_pixels();
-        self.terrain = self.gfx.create_texture(w, h, &px).ok();
+        if let Some(terrain) = &self.terrain {
+            self.gfx.update_texture(terrain, 0, 0, w, h, &px);
+        } else {
+            self.terrain = self.gfx.create_texture(w, h, &px).ok();
+        }
         self.terrain_key = key;
         if self.fog.is_none() {
             self.fog = self.gfx.create_texture(MW as u32, MH as u32, &self.fog_px).ok();
+        }
+        if self.atlas.is_none() {
+            if let Some((aw, ah, apx)) = decode_atlas_rle(OBLIQUE_ATLAS_RLE) {
+                self.atlas = self.gfx.create_texture(aw, ah, &apx).ok();
+            }
         }
     }
 
@@ -830,21 +874,22 @@ impl Game {
     fn render(&mut self) {
         self.gfx.begin([0.08, 0.09, 0.07, 1.0]);
         self.ensure_terrain();
-        if self.screen == Screen::Title {
-            // 地図を画面いっぱいに
-            let z = (self.gfx.width as f32 / (MW as f32 * TS)).max(self.gfx.height as f32 / (MH as f32 * TS));
-            self.zoom = z;
-            self.cam = (MW as f32 * TS / 2.0, MH as f32 * TS / 2.0);
-        }
-        self.render_world();
-        if self.screen == Screen::Battle {
+        let title = (self.screen == Screen::Title).then(|| TitleLayout::new(&self.gfx));
+        if let Some(layout) = &title {
+            self.render_title_background(layout);
+        } else {
+            self.render_world();
             self.render_minimap();
         }
         if self.gfx.d2d_begin() {
             self.buttons.clear();
             self.panels.clear();
-            if self.screen == Screen::Title {
-                self.render_title();
+            if let Some(layout) = &title {
+                if self.show_help {
+                    self.render_help();
+                } else {
+                    self.render_title(layout);
+                }
             } else {
                 self.render_labels();
                 self.render_hud();
@@ -881,31 +926,33 @@ impl Game {
         self.gfx.set_xform(sx, sy, -self.cam.0 * sx, -self.cam.1 * sy);
     }
 
+    fn render_title_background(&mut self, layout: &TitleLayout) {
+        let g = &mut self.gfx;
+        let (w, h) = (g.width as f32, g.height as f32);
+        g.set_xform(2.0 / w, -2.0 / h, -1.0, 1.0);
+        if let Some(art) = &self.title_art {
+            let scale = (w / art.w as f32).max(h / art.h as f32);
+            let (aw, ah) = (art.w as f32 * scale, art.h as f32 * scale);
+            let (x, y) = ((w - aw) * 0.70, (h - ah) * 0.50);
+            g.draw_textured(art, x, y, x + aw, y + ah, [1.0; 4], true);
+        }
+        let [x0, y0, x1, y1] = layout.preview;
+        g.rect(x0, y0, x1, y1, [0.055, 0.063, 0.046, 0.96]);
+        if let Some(map) = &self.terrain {
+            g.draw_textured(map, x0 + 6.0, y0 + 28.0, x1 - 6.0, y1 - 42.0, [1.0; 4], true);
+        }
+        g.flush();
+    }
+
     fn update_fog(&mut self) {
         let w = &self.world;
         for y in 0..MH {
             for x in 0..MW {
                 let i = idx(x, y);
-                let a = if self.screen == Screen::Title {
-                    0.0
-                } else {
-                    match w.phase {
-                        Phase::Prep => {
-                            if x >= MW / 2 {
-                                0.45
-                            } else {
-                                0.0
-                            }
-                        }
-                        Phase::Battle => {
-                            if w.vis[0][i] {
-                                0.0
-                            } else {
-                                0.5
-                            }
-                        }
-                        Phase::Over => 0.0,
-                    }
+                let a = match w.phase {
+                    Phase::Prep if x >= MW / 2 => 0.45,
+                    Phase::Battle if !w.vis[0][i] => 0.5,
+                    _ => 0.0,
                 };
                 self.fog_px[i] = (((a * 255.0) as u32) << 24) | 0x0a0c0a;
             }
@@ -922,17 +969,13 @@ impl Game {
         if let Some(t) = &self.terrain {
             self.gfx.draw_textured(t, 0.0, 0.0, mw, mh, [1.0; 4], true);
         }
-        if self.screen == Screen::Title {
-            self.gfx.rect(0.0, 0.0, mw, mh, [0.03, 0.04, 0.03, 0.45]);
-            self.gfx.flush();
-            return;
-        }
         let mouse_w = self.to_world(self.mouse);
         let over = self.over_ui(self.mouse);
         let tool_cost = self.tool_cost();
         let left = self.world.left(0);
         let (tool, mimic, touch, screen, marker) = (self.tool, self.mimic, self.touch, self.screen, self.marker);
         let g = &mut self.gfx;
+        let atlas = self.atlas.as_ref();
         let w = &self.world;
         let px = 1.0 / self.zoom;
         let clock = self.clock;
@@ -964,43 +1007,114 @@ impl Game {
                     g.line(p0, p1, 7.0 * px, oc);
                 }
             }
-            // 司令部の建物
-            let s = TS * 0.75;
-            g.rect(b.0 - s + 4.0, b.1 - s + 5.0, b.0 + s + 4.0, b.1 + s + 5.0, [0.0, 0.0, 0.0, 0.35]);
-            g.rect(b.0 - s, b.1 - s, b.0 + s, b.1 + s, [0.42, 0.40, 0.36, 1.0]);
-            g.rect(b.0 - s * 0.7, b.1 - s * 0.7, b.0 + s * 0.7, b.1 + s * 0.7, [0.34, 0.33, 0.30, 1.0]);
-            g.rect_outline(b.0 - s, b.1 - s, b.0 + s, b.1 + s, 2.0, shade(col, 0.9));
-            // 旗竿と旗
-            g.line((b.0, b.1), (b.0, b.1 - TS * 1.3), 2.0, [0.2, 0.2, 0.2, 1.0]);
-            let wave = (clock * 4.0).sin() * 2.0;
-            g.tri((b.0, b.1 - TS * 1.3), (b.0 + TS * 0.8, b.1 - TS * 1.12 + wave), (b.0, b.1 - TS * 0.95), col);
+            // 司令部の建物（フォールバック用）
+            if atlas.is_none() {
+                let s = TS * 0.75;
+                g.rect(b.0 - s + 4.0, b.1 - s + 5.0, b.0 + s + 4.0, b.1 + s + 5.0, [0.0, 0.0, 0.0, 0.35]);
+                g.rect(b.0 - s, b.1 - s, b.0 + s, b.1 + s, [0.42, 0.40, 0.36, 1.0]);
+                g.rect(b.0 - s * 0.7, b.1 - s * 0.7, b.0 + s * 0.7, b.1 + s * 0.7, [0.34, 0.33, 0.30, 1.0]);
+                g.rect_outline(b.0 - s, b.1 - s, b.0 + s, b.1 + s, 2.0, shade(col, 0.9));
+                g.line((b.0, b.1), (b.0, b.1 - TS * 1.3), 2.0, [0.2, 0.2, 0.2, 1.0]);
+                let wave = (clock * 4.0).sin() * 2.0;
+                g.tri((b.0, b.1 - TS * 1.3), (b.0 + TS * 0.8, b.1 - TS * 1.12 + wave), (b.0, b.1 - TS * 0.95), col);
+            }
         }
-        // 竜の歯
+        // 地面上の印（竜の歯リング・生存ユニットの陣営円）
         for tt in w.teeth.iter() {
             if !tt.alive || !(tt.side == 0 || tt.seen[0]) {
                 continue;
             }
             let c = center(tt.tile);
-            let dmg = tt.hp / crate::data::TEETH_HP;
-            for (k, (ox, oy)) in [(-0.22, -0.22), (0.22, -0.18), (-0.18, 0.22), (0.24, 0.24), (0.0, 0.0)].iter().enumerate() {
-                if k == 4 && dmg < 0.5 {
-                    continue;
+            if atlas.is_none() {
+                let dmg = tt.hp / crate::data::TEETH_HP;
+                for (k, (ox, oy)) in [(-0.22, -0.22), (0.22, -0.18), (-0.18, 0.22), (0.24, 0.24), (0.0, 0.0)].iter().enumerate() {
+                    if k == 4 && dmg < 0.5 {
+                        continue;
+                    }
+                    let (cx, cy) = (c.0 + ox * TS, c.1 + oy * TS);
+                    let r = TS * 0.17;
+                    g.tri((cx - r + 3.0, cy + r + 2.0), (cx + r + 3.0, cy + r + 2.0), (cx + 3.0, cy - r + 2.0), [0.0, 0.0, 0.0, 0.3]);
+                    g.tri((cx - r, cy + r), (cx, cy + r), (cx, cy - r), [0.78, 0.77, 0.72, 1.0]);
+                    g.tri((cx, cy + r), (cx + r, cy + r), (cx, cy - r), [0.55, 0.54, 0.50, 1.0]);
                 }
-                let (cx, cy) = (c.0 + ox * TS, c.1 + oy * TS);
-                let r = TS * 0.17;
-                g.tri((cx - r + 3.0, cy + r + 2.0), (cx + r + 3.0, cy + r + 2.0), (cx + 3.0, cy - r + 2.0), [0.0, 0.0, 0.0, 0.3]);
-                g.tri((cx - r, cy + r), (cx, cy + r), (cx, cy - r), [0.78, 0.77, 0.72, 1.0]);
-                g.tri((cx, cy + r), (cx + r, cy + r), (cx, cy - r), [0.55, 0.54, 0.50, 1.0]);
             }
             g.ring(c.0, c.1, TS * 0.48, 1.5 * px, 16, with_a(side_color(tt.side), 0.6));
         }
-        // 部隊（残骸 → 戦車・デコイ）
-        for pass in 0..2 {
+        for (j, u) in w.units.iter().enumerate() {
+            if !u.alive || u.kind == Kind::Drone {
+                continue;
+            }
+            let visible = u.side == 0 || w.phase == Phase::Over || w.spotted[0].get(j).copied().unwrap_or(false);
+            if !visible {
+                continue;
+            }
+            let alpha = if u.kind == Kind::Decoy && (u.side == 0 || u.revealed) { 0.72 } else { 1.0 };
+            g.circle(u.pos.0, u.pos.1, u.spec().len * TS * 0.58, 20, with_a(side_color(u.side), 0.20 * alpha));
+        }
+        // YYMythology 風 3/4 クォータービュー：Yソートして手前から奧へ重なり描画
+        if let Some(at) = atlas {
+            let mut items: Vec<(f32, usize, f32, f32, f32, bool, [f32; 4])> = Vec::new();
+            for side in 0..2 {
+                let b = w.base_pos(side);
+                let r = TS * 1.45;
+                items.push((b.1 + TS * 0.25, CELL_HQ, b.0, b.1 - r * 0.22, r, side == 1, [1.0, 1.0, 1.0, 1.0]));
+            }
+            for tt in w.teeth.iter() {
+                if !tt.alive || !(tt.side == 0 || tt.seen[0]) {
+                    continue;
+                }
+                let c = center(tt.tile);
+                let r = TS * 0.64;
+                let k = 0.72 + 0.28 * (tt.hp / crate::data::TEETH_HP).clamp(0.0, 1.0);
+                items.push((c.1, CELL_TEETH, c.0, c.1 - r * 0.14, r, false, [k, k, k, 1.0]));
+            }
             for (j, u) in w.units.iter().enumerate() {
                 if u.kind == Kind::Drone {
                     continue;
                 }
-                if (pass == 0) == u.alive {
+                let visible = u.side == 0 || !u.alive || w.phase == Phase::Over || w.spotted[0].get(j).copied().unwrap_or(false);
+                if !visible {
+                    continue;
+                }
+                let flip_x = unit_flip_x(u);
+                if !u.alive && u.kind == Kind::Decoy {
+                    let r = TS * 0.72;
+                    items.push((u.pos.1 - 1000.0, CELL_DECOY_WRECK, u.pos.0, u.pos.1, r, flip_x, [1.0, 1.0, 1.0, 0.85]));
+                    continue;
+                }
+                let cell = unit_oblique_cell(u);
+                let r = unit_oblique_radius(u.spec());
+                let alpha = if u.kind == Kind::Decoy && (u.side == 0 || !u.revealed) && u.side == 0 {
+                    0.78
+                } else {
+                    1.0
+                };
+                let tint = if !u.alive { [0.30, 0.30, 0.30, 1.0] } else { [1.0, 1.0, 1.0, alpha] };
+                let sort_y = if u.alive { u.pos.1 } else { u.pos.1 - 500.0 };
+                items.push((sort_y, cell, u.pos.0, u.pos.1 - r * 0.20, r, flip_x, tint));
+            }
+            items.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+            g.begin_sprites();
+            for (_, cell, sx, sy, r, flip_x, tint) in items {
+                let uv = atlas_uv(cell, flip_x);
+                g.push_sprite(sx, sy, r, r, 0.0, uv, tint);
+            }
+            g.end_sprites(at, true);
+        }
+        // 基地の旗・デコイ見破り印・撃破煙/炎（およびフォールバック図形）
+        for side in 0..2 {
+            if atlas.is_some() {
+                let b = w.base_pos(side);
+                let col = side_color(side);
+                let flag_base = (b.0, b.1 - TS * 0.9);
+                g.line(flag_base, (flag_base.0, flag_base.1 - TS * 1.15), 2.0, [0.2, 0.2, 0.2, 1.0]);
+                let wave = (clock * 4.0).sin() * 2.0;
+                g.tri((flag_base.0, flag_base.1 - TS * 1.15), (flag_base.0 + TS * 0.72, flag_base.1 - TS * 0.98 + wave), (flag_base.0, flag_base.1 - TS * 0.82), col);
+            }
+        }
+        for pass in 0..2 {
+            for (j, u) in w.units.iter().enumerate() {
+                if u.kind == Kind::Drone || (pass == 0) == u.alive {
                     continue;
                 }
                 let visible = u.side == 0 || !u.alive || w.phase == Phase::Over || w.spotted[0].get(j).copied().unwrap_or(false);
@@ -1008,11 +1122,18 @@ impl Game {
                     continue;
                 }
                 if !u.alive && u.kind == Kind::Decoy {
-                    draw_decoy_wreck(g, u);
+                    if atlas.is_none() {
+                        draw_decoy_wreck(g, u);
+                    }
                     continue;
                 }
                 let alpha = if u.kind == Kind::Decoy && (u.side == 0 || u.revealed) { 0.55 } else { 1.0 };
-                draw_tank(g, u, alpha, clock);
+                if atlas.is_none() {
+                    draw_tank_fallback(g, u, alpha);
+                }
+                if !u.alive {
+                    draw_wreck_fx(g, u, clock);
+                }
                 if u.kind == Kind::Decoy && u.side == 1 && u.revealed && u.alive {
                     let r = TS * 0.35;
                     g.line((u.pos.0 - r, u.pos.1 - r), (u.pos.0 + r, u.pos.1 + r), 3.0 * px, [1.0, 0.9, 0.3, 0.9]);
@@ -1057,6 +1178,19 @@ impl Game {
             g.draw_textured(f, 0.0, 0.0, mw, mh, [1.0; 4], true);
         }
         // ドローン（空中なので霧の上）
+        if let Some(at) = atlas {
+            g.begin_sprites();
+            for (j, u) in w.units.iter().enumerate() {
+                if u.kind != Kind::Drone || !u.alive {
+                    continue;
+                }
+                if u.side == 1 && !w.spotted[0].get(j).copied().unwrap_or(false) && w.phase != Phase::Over {
+                    continue;
+                }
+                push_drone_sprites(g, u, clock);
+            }
+            g.end_sprites(at, true);
+        }
         for (j, u) in w.units.iter().enumerate() {
             if u.kind != Kind::Drone || !u.alive {
                 continue;
@@ -1064,7 +1198,11 @@ impl Game {
             if u.side == 1 && !w.spotted[0].get(j).copied().unwrap_or(false) && w.phase != Phase::Over {
                 continue;
             }
-            draw_drone(g, u, clock);
+            if atlas.is_none() {
+                draw_drone(g, u, clock);
+            } else {
+                g.circle(u.pos.0, u.pos.1, TS * 0.08, 10, side_color(u.side));
+            }
             if u.side == 0 {
                 g.ring(u.pos.0, u.pos.1, DRONE_SIGHT * TS, 1.5 * px, 64, [0.6, 0.85, 1.0, 0.25]);
             }
@@ -1112,12 +1250,13 @@ impl Game {
             g.rect_outline(c.0 - r, c.1 - r, c.0 + r, c.1 + r, 2.0 * px, col);
             if let (Tool::Tank(n, i), true) = (tool, ok) {
                 let ghost = ghost_unit(n, i, c);
-                draw_tank(g, &ghost, 0.5, clock);
+                draw_tank_with_atlas(g, atlas, &ghost, 0.5);
                 g.ring(c.0, c.1, n.tanks()[i].range * TS, 1.5 * px, 64, [1.0, 1.0, 1.0, 0.2]);
             }
             if let (Tool::Decoy, true) = (tool, ok) {
-                let ghost = ghost_unit(mimic.0, mimic.1, c);
-                draw_tank(g, &ghost, 0.4, clock);
+                let mut ghost = ghost_unit(mimic.0, mimic.1, c);
+                ghost.kind = Kind::Decoy;
+                draw_tank_with_atlas(g, atlas, &ghost, 0.65);
                 g.ring(c.0, c.1, DECOY_REVEAL * TS, 1.5 * px, 48, [1.0, 0.9, 0.4, 0.3]);
             }
         }
@@ -1207,7 +1346,10 @@ impl Game {
 
     fn button(&mut self, r: [f32; 4], label: &str, act: Act, active: bool) {
         let hov = self.hovered(r);
-        let bg = if active {
+        let primary = act == Act::Start;
+        let bg = if primary {
+            if hov { GOLD } else { [0.84, 0.64, 0.31, 1.0] }
+        } else if active {
             [0.55, 0.42, 0.16, 0.95]
         } else if hov {
             [0.26, 0.26, 0.20, 0.95]
@@ -1216,7 +1358,9 @@ impl Game {
         };
         self.gfx.fill_round(r[0], r[1], r[2], r[3], 5.0, bg);
         self.gfx.stroke_round(r[0], r[1], r[2], r[3], 5.0, 1.0, if active { GOLD } else { EDGE });
-        self.gfx.text(label, r[0] + 3.0, r[1], r[2] - r[0] - 6.0, r[3] - r[1], Font::NormalCenter, if active { [1.0, 0.97, 0.88, 1.0] } else { TEXT });
+        let font = if primary { Font::BigCenter } else { Font::NormalCenter };
+        let text = if primary { [0.11, 0.08, 0.045, 1.0] } else if active { [1.0, 0.97, 0.88, 1.0] } else { TEXT };
+        self.gfx.text(label, r[0] + 3.0, r[1], r[2] - r[0] - 6.0, r[3] - r[1], font, text);
         self.buttons.push(Btn { r, act });
     }
 
@@ -1226,66 +1370,73 @@ impl Game {
         self.panels.push(r);
     }
 
-    fn render_title(&mut self) {
-        let (w, h) = (self.gfx.width as f32, self.gfx.height as f32);
-        let compact = self.gfx.compact;
-        // 題字
-        let ty = if compact { 6.0 } else { h * 0.06 };
-        self.gfx.text_shadow(t!("鋼鉄の大地", "Steel Front", "钢铁大地"), 0.0, ty, w, 50.0, Font::Title, GOLD);
-        self.gfx.text_shadow(t!("第二次世界大戦 戦車戦", "WWII tank battles", "二战坦克战"), 0.0, ty + 46.0, w, 26.0, Font::BigCenter, TEXT);
-        let pw = (w - 40.0).min(980.0);
-        let x0 = (w - pw) / 2.0;
-        let y0 = ty + if compact { 76.0 } else { 90.0 };
-        let y1 = (h - 12.0).min(y0 + 560.0);
-        self.panel([x0, y0, x0 + pw, y1]);
-        let col_w = pw * 0.48;
-        // 左列：戦場
-        let lx = x0 + 18.0;
-        let mut y = y0 + 12.0;
-        self.gfx.text(t!("戦場", "Battlefield", "战场"), lx, y, col_w, 24.0, Font::Big, GOLD);
-        y += 28.0;
-        let bh = if compact { 30.0 } else { 36.0 };
-        for (i, f) in FIELDS.iter().enumerate() {
-            let r = [lx, y, lx + col_w, y + bh - 4.0];
-            self.button(r, f.name(), Act::Field(i), i == self.field_i);
-            y += bh;
-        }
-        y += 4.0;
+    fn render_title(&mut self, layout: &TitleLayout) {
+        let TitleLayout { compact, left, top, menu_width, preview } = *layout;
+        let title = t!("鋼鉄の大地", "Steel Front", "钢铁大地");
+        let font = if compact { Font::Title } else { Font::CoverTitle };
+        let th = if compact { 47.0 } else { 72.0 };
+        let tw = (self.gfx.measure(title, font).ceil() + 6.0).min(menu_width);
+        self.gfx.fill_round(left, top, left + 52.0, top + 3.0, 1.0, GOLD);
+        self.gfx.text_shadow(title, left, top + 4.0, tw, th, font, [1.0, 0.91, 0.73, 1.0]);
+        self.gfx.text(t!("第二次世界大戦 戦車戦", "WWII tank battles", "二战坦克战"),
+            left + 1.0, top + th + 8.0, menu_width, 23.0, Font::Big, DIM);
+
+        let pad = if compact { 14.0 } else { 20.0 };
+        let y0 = top + if compact { 82.0 } else { 116.0 };
+        let x = left + pad;
+        let y = y0 + pad;
+        let width = menu_width - 2.0 * pad;
+        let gap = 10.0;
+        let column = (width - gap) / 2.0;
+        let row = if compact { 35.0 } else { 42.0 };
+        let map_y = y + 28.0;
+        let desc_y = map_y + 3.0 * row + 4.0;
         let desc = self.field().desc();
-        self.gfx.text(desc, lx, y, col_w, 60.0, Font::Normal, TEXT);
-        y += self.gfx.measure_h(desc, Font::Normal, col_w) + 8.0;
-        self.button([lx, y, lx + col_w * 0.6, y + 30.0], t!("地形を作り直す", "Regenerate terrain", "重新生成地形"), Act::Reroll, false);
-        // 右列：予算・難易度
-        let rx = x0 + pw * 0.52;
-        let rw = pw * 0.48 - 18.0;
-        let mut y = y0 + 12.0;
-        self.gfx.text(t!("予算規模（双方同じ）", "Budget (same for both sides)", "预算规模（双方相同）"), rx, y, rw, 24.0, Font::Big, GOLD);
-        y += 28.0;
-        let bw = (rw - 16.0) / 3.0;
+        let desc_h = self.gfx.measure_h(desc, Font::Normal, width).max(30.0);
+        let options_y = desc_y + desc_h + 12.0;
+        let options_h = if compact { 32.0 } else { 38.0 };
+        let footer = options_y + 26.0 + options_h + 16.0;
+        let footer_h = if compact { 40.0 } else { 50.0 };
+
+        self.panel([left, y0, left + menu_width, footer + footer_h + pad]);
+        self.gfx.text(t!("戦場", "Battlefield", "战场"), x, y, width, 24.0, Font::Big, GOLD);
+        for (i, field) in FIELDS.iter().enumerate() {
+            let bx = x + (i % 2) as f32 * (column + gap);
+            let by = map_y + (i / 2) as f32 * row;
+            self.button([bx, by, bx + column, by + row - 6.0], field.name(), Act::Field(i), i == self.field_i);
+        }
+        self.gfx.text(desc, x, desc_y, width, desc_h, Font::Normal, TEXT);
+
+        let right = x + column + gap;
+        self.gfx.text(t!("予算規模（双方同じ）", "Budget (same for both)", "预算规模（双方相同）"),
+            x, options_y, column, 22.0, Font::Big, GOLD);
+        self.gfx.text(t!("敵の強さ", "Enemy strength", "敌方强度"),
+            right, options_y, column, 22.0, Font::Big, GOLD);
+        let oy = options_y + 26.0;
+        let ow = (column - 12.0) / 3.0;
         for (i, b) in BUDGETS.iter().enumerate() {
-            let r = [rx + i as f32 * (bw + 8.0), y, rx + i as f32 * (bw + 8.0) + bw, y + 34.0];
-            self.button(r, &format!("{}  {}", b.name(), b.points()), Act::Budget(i), i == self.budget_i);
+            let dx = i as f32 * (ow + 6.0);
+            self.button([x + dx, oy, x + dx + ow, oy + options_h],
+                &format!("{}  {}", b.name(), b.points()), Act::Budget(i), i == self.budget_i);
+            self.button([right + dx, oy, right + dx + ow, oy + options_h],
+                diff_name(i), Act::Diff(i), i == self.diff_i);
         }
-        y += 44.0;
-        self.gfx.text(t!("敵の強さ", "Enemy strength", "敌方强度"), rx, y, rw, 24.0, Font::Big, GOLD);
-        y += 28.0;
-        for i in 0..3 {
-            let r = [rx + i as f32 * (bw + 8.0), y, rx + i as f32 * (bw + 8.0) + bw, y + 34.0];
-            self.button(r, diff_name(i), Act::Diff(i), i == self.diff_i);
-        }
-        y += 46.0;
-        let rules = t!(
-            "・どの国の戦車も自由に組み合わせて買える。ドイツ・ソ連の強力な戦車は高く、日本・イタリアの戦車は安い\n・開戦前にデコイ（偽の戦車）と竜の歯（対戦車障害物）を置ける。開戦後は追加できない\n・偵察ドローンを1機ずつ使える。戦力には数えず、攻撃もされない\n・敵の基地を占領するか、敵の戦車をすべて撃破すれば勝ち。森・湿地・丘では進撃が遅くなる",
-            "- Mix tanks from any nation. Powerful German and Soviet tanks are expensive; Japanese and Italian tanks are cheap.\n- Before battle, place decoys (fake tanks) and dragon's teeth (anti-tank obstacles). None can be added once battle begins.\n- Each side has one recon drone. It is not a combat unit and cannot be attacked.\n- Win by capturing the enemy base or destroying all enemy tanks. Forest, marsh and hills slow your advance.",
-            "・可自由组合任意国家的坦克。德、苏强力坦克昂贵，日、意坦克便宜\n・开战前可布置诱饵（假坦克）和龙牙（反坦克障碍），开战后不能追加\n・双方各有一架侦察无人机，不计入战力，也不会被攻击\n・占领敌方基地或击毁敌方全部坦克即获胜。森林、沼泽、丘陵会减慢推进"
-        );
-        let rh = (y1 - 60.0 - y).max(40.0);
-        self.gfx.text(rules, rx, y, rw, rh, Font::Small, DIM);
-        let by = y1 - 52.0;
-        self.button([rx, by, rx + rw * 0.62, by + 40.0], t!("準備へ進む ▶", "To deployment ▶", "进入准备 ▶"), Act::Start, true);
-        let lw = rw * 0.36;
-        self.button([rx + rw - lw, by, rx + rw, by + 18.0], lang::lang().next().native(), Act::Lang, false);
-        self.button([rx + rw - lw, by + 22.0, rx + rw, by + 40.0], t!("全画面", "Fullscreen", "全屏"), Act::Fullscreen, false);
+        let end = footer + footer_h;
+        let start_width = width * 0.57;
+        self.button([x, footer, x + start_width, end],
+            t!("準備へ進む  ▶", "To deployment  ▶", "进入准备  ▶"), Act::Start, true);
+        let shortcut = (width - start_width - 2.0 * gap) / 2.0;
+        let bx = x + start_width + gap;
+        self.button([bx, footer, bx + shortcut, end], lang::lang().next().native(), Act::Lang, false);
+        self.button([bx + shortcut + gap, footer, x + width, end],
+            t!("全画面", "Fullscreen", "全屏"), Act::Fullscreen, false);
+
+        let [px0, py0, px1, py1] = preview;
+        self.gfx.stroke_round(px0, py0, px1, py1, 4.0, 1.0, EDGE);
+        self.gfx.text(t!("戦場プレビュー", "Battlefield preview", "战场预览"),
+            px0 + 10.0, py0 + 2.0, px1 - px0 - 20.0, 24.0, Font::Normal, GOLD);
+        self.button([px0 + 6.0, py1 - 36.0, px1 - 6.0, py1 - 6.0],
+            t!("地形を作り直す", "Regenerate terrain", "重新生成地形"), Act::Reroll, false);
     }
 
     fn render_hud(&mut self) {
@@ -1413,7 +1564,7 @@ impl Game {
     fn render_shop(&mut self) {
         let (w, h) = (self.gfx.width as f32, self.gfx.height as f32);
         let compact = self.gfx.compact;
-        let pw = if compact { 300.0 } else { 340.0 };
+        let pw = if compact { 312.0 } else { 378.0 };
         let x0 = w - pw - 8.0;
         let y0 = 44.0;
         let y1 = h - 8.0;
@@ -1436,62 +1587,90 @@ impl Game {
         y += 62.0;
         let nation = NATIONS[self.tab];
         if !compact {
-            self.gfx.text(nation.blurb(), ix, y, iw, 34.0, Font::Small, DIM);
-            y += 34.0;
+            self.gfx.text(nation.blurb(), ix, y, iw, 32.0, Font::Small, DIM);
+            y += 32.0;
         }
-        let ch = if compact { 48.0 } else { 62.0 };
-        for (i, s) in nation.tanks().iter().enumerate() {
-            let r = [ix, y, ix + iw, y + ch - 4.0];
+        // 2列グリッド（7車種が1画面に収まる）
+        let col_w = (iw - 6.0) / 2.0;
+        let ch = if compact { 44.0 } else { 54.0 };
+        let tanks_list = nation.tanks();
+        let rows = (tanks_list.len() + 1) / 2;
+        let mut hovered_spec: Option<&TankSpec> = None;
+        for (i, s) in tanks_list.iter().enumerate() {
+            let (row, col) = (i / 2, i % 2);
+            let cx0 = ix + col as f32 * (col_w + 6.0);
+            let cy0 = y + row as f32 * ch;
+            let r = [cx0, cy0, cx0 + col_w, cy0 + ch - 4.0];
             let active = self.tool == Tool::Tank(nation, i);
             let hov = self.hovered(r);
+            if hov || active {
+                hovered_spec = Some(s);
+            }
             let afford = s.cost <= self.world.left(0);
             self.gfx.fill_round(r[0], r[1], r[2], r[3], 5.0, if active { [0.45, 0.35, 0.14, 0.95] } else if hov { [0.24, 0.24, 0.19, 0.95] } else { [0.14, 0.15, 0.11, 0.92] });
             self.gfx.stroke_round(r[0], r[1], r[2], r[3], 5.0, 1.0, if active { GOLD } else { EDGE });
             let nc = if afford { TEXT } else { DIM };
-            self.gfx.text(s.name(), r[0] + 8.0, r[1] + 2.0, iw - 80.0, 20.0, Font::Normal, nc);
-            self.gfx.text(&format!("{}", s.cost), r[2] - 70.0, r[1] + 2.0, 62.0, 20.0, Font::Big, if afford { GOLD } else { RED });
-            let stats = tf!(
-                "{} 装甲{}/{} 貫通{} 速{:.1} 射程{}",
-                "{} Armor {}/{} Pen {} Spd {:.1} Rng {}",
-                "{} 装甲{}/{} 穿深{} 速{:.1} 射程{}",
-                weight_name(s.weight),
-                s.front as u32,
-                s.side as u32,
-                s.pen as u32,
-                s.speed,
-                s.range as u32
-            );
-            self.gfx.text(&stats, r[0] + 8.0, r[1] + 22.0, iw - 16.0, 18.0, Font::Small, DIM);
+            self.gfx.text(s.name(), r[0] + 6.0, r[1] + 2.0, col_w - 44.0, 18.0, Font::Small, nc);
+            self.gfx.text(&format!("{}", s.cost), r[2] - 40.0, r[1] + 2.0, 34.0, 18.0, Font::Normal, if afford { GOLD } else { RED });
+            let tag = s.role.tag();
+            let line2 = if compact {
+                if tag.is_empty() {
+                    tf!("甲{}/{} 貫{}", "A{}/{} P{}", "甲{}/{} 穿{}", s.front as u32, s.side as u32, s.pen as u32)
+                } else {
+                    format!("{} {}", tag, tf!("甲{} 貫{}", "A{} P{}", "甲{} 穿{}", s.front as u32, s.pen as u32))
+                }
+            } else if tag.is_empty() {
+                tf!("{} 甲{}/{} 貫{}", "{} A{}/{} P{}", "{} 甲{}/{} 穿{}", weight_name(s.weight), s.front as u32, s.side as u32, s.pen as u32)
+            } else {
+                format!("{} {}", tag, tf!("甲{}/{} 貫{}", "A{}/{} P{}", "甲{}/{} 穿{}", s.front as u32, s.side as u32, s.pen as u32))
+            };
+            self.gfx.text(&line2, r[0] + 6.0, r[1] + if compact { 20.0 } else { 22.0 }, col_w - 12.0, 16.0, Font::Small, DIM);
             if !compact {
-                self.gfx.text(&format!("{}  HP {}", s.gun, s.hp as u32), r[0] + 8.0, r[1] + 39.0, iw - 16.0, 18.0, Font::Small, DIM);
+                self.gfx.text(&format!("{}  HP {}", s.gun, s.hp as u32), r[0] + 6.0, r[1] + 35.0, col_w - 12.0, 15.0, Font::Small, DIM);
             }
             self.buttons.push(Btn { r, act: Act::Tool(Tool::Tank(nation, i)) });
-            y += ch;
         }
-        y += 4.0;
+        y += rows as f32 * ch + 2.0;
+        if !compact {
+            if let Some(s) = hovered_spec {
+                let info = tf!(
+                    "{}：{} HP{} 速{:.1} 射程{} 装填{:.1}s",
+                    "{}: {} HP{} Spd{:.1} Rng{} Rld{:.1}s",
+                    "{}：{} HP{} 速{:.1} 射程{} 装填{:.1}s",
+                    s.name(),
+                    s.gun,
+                    s.hp as u32,
+                    s.speed,
+                    s.range as u32,
+                    s.reload
+                );
+                self.gfx.text(&info, ix, y, iw, 18.0, Font::Small, GOLD);
+            }
+            y += 18.0;
+        }
         let (mn, mi) = self.mimic;
         let decoy_label = tf!("デコイ {}（{}に偽装）", "Decoy {} (looks like {})", "诱饵 {}（伪装成{}）", DECOY_COST, mn.tanks()[mi].name());
-        self.button([ix, y, ix + iw, y + 28.0], &decoy_label, Act::Tool(Tool::Decoy), self.tool == Tool::Decoy);
-        y += 32.0;
+        self.button([ix, y, ix + iw, y + 26.0], &decoy_label, Act::Tool(Tool::Decoy), self.tool == Tool::Decoy);
+        y += 30.0;
         let hw = (iw - 6.0) / 2.0;
-        self.button([ix, y, ix + hw, y + 28.0], &tf!("竜の歯 {}", "Dragon's teeth {}", "龙牙 {}", TEETH_COST), Act::Tool(Tool::Teeth), self.tool == Tool::Teeth);
-        self.button([ix + hw + 6.0, y, ix + iw, y + 28.0], t!("撤去", "Remove", "撤除"), Act::Tool(Tool::Remove), self.tool == Tool::Remove);
-        y += 34.0;
+        self.button([ix, y, ix + hw, y + 26.0], &tf!("竜の歯 {}", "Dragon's teeth {}", "龙牙 {}", TEETH_COST), Act::Tool(Tool::Teeth), self.tool == Tool::Teeth);
+        self.button([ix + hw + 6.0, y, ix + iw, y + 26.0], t!("撤去", "Remove", "撤除"), Act::Tool(Tool::Remove), self.tool == Tool::Remove);
+        y += 30.0;
         let wd = &self.world;
         let tanks = wd.tank_count(0);
         let decoys = wd.units.iter().filter(|u| u.side == 0 && u.kind == Kind::Decoy).count();
         let teeth = wd.teeth.iter().filter(|t| t.side == 0).count();
         let summary = tf!("戦車 {}両　デコイ {}　竜の歯 {}", "Tanks {}  Decoys {}  Teeth {}", "坦克 {}辆　诱饵 {}　龙牙 {}", tanks, decoys, teeth);
         self.gfx.text(&summary, ix, y, iw, 20.0, Font::Normal, TEXT);
-        y += 22.0;
+        y += 20.0;
         if !compact {
             let hint = t!("左クリックで置く・右クリックで取り除く。竜の歯はドラッグで連続して置ける", "Left-click to place, right-click to remove. Drag to lay a line of teeth.", "左键放置，右键撤除。拖动可连续放置龙牙");
-            self.gfx.text(hint, ix, y, iw, 36.0, Font::Small, DIM);
+            self.gfx.text(hint, ix, y, iw, 34.0, Font::Small, DIM);
         }
-        let by = y1 - 48.0;
-        self.button([ix, by - 34.0, ix + hw, by - 6.0], t!("おまかせ配置", "Auto deploy", "自动部署"), Act::Auto, false);
-        self.button([ix + hw + 6.0, by - 34.0, ix + iw, by - 6.0], t!("全て撤去", "Clear all", "全部撤除"), Act::Clear, false);
-        self.button([ix, by, ix + iw, by + 40.0], t!("戦闘開始 ▶", "Begin battle ▶", "开始战斗 ▶"), Act::Begin, true);
+        let by = y1 - 46.0;
+        self.button([ix, by - 32.0, ix + hw, by - 4.0], t!("おまかせ配置", "Auto deploy", "自动部署"), Act::Auto, false);
+        self.button([ix + hw + 6.0, by - 32.0, ix + iw, by - 4.0], t!("全て撤去", "Clear all", "全部撤除"), Act::Clear, false);
+        self.button([ix, by, ix + iw, by + 38.0], t!("戦闘開始 ▶", "Begin battle ▶", "开始战斗 ▶"), Act::Begin, true);
     }
 
     fn render_selection(&mut self) {
@@ -1618,7 +1797,111 @@ fn quad(g: &mut Gfx, c: (f32, f32), a: f32, off: f32, hl: f32, hw: f32, col: C) 
     g.tri(a1, c1, d1, col);
 }
 
-fn draw_tank(g: &mut Gfx, u: &Unit, alpha: f32, clock: f32) {
+const OBLIQUE_ATLAS_RLE: &[u8] = include_bytes!("../assets/sprites/oblique_atlas.rle");
+const ATLAS_COLS: usize = 8;
+const ATLAS_ROWS: usize = 6;
+#[cfg(test)]
+const VEHICLE_COUNT: usize = 42;
+const CELL_DECOY: usize = 42;
+const CELL_DECOY_WRECK: usize = 43;
+const CELL_DRONE: usize = 44;
+const CELL_TEETH: usize = 45;
+const CELL_HQ: usize = 46;
+
+fn atlas_uv(cell: usize, flip_x: bool) -> [f32; 4] {
+    let col = (cell % ATLAS_COLS) as f32;
+    let row = (cell / ATLAS_COLS) as f32;
+    let u0 = (col + 0.005) / ATLAS_COLS as f32;
+    let v0 = (row + 0.005) / ATLAS_ROWS as f32;
+    let u1 = (col + 0.995) / ATLAS_COLS as f32;
+    let v1 = (row + 0.995) / ATLAS_ROWS as f32;
+    if flip_x { [u1, v0, u0, v1] } else { [u0, v0, u1, v1] }
+}
+
+fn decode_atlas_rle(data: &[u8]) -> Option<(u32, u32, Vec<u32>)> {
+    if data.len() < 8 || &data[..4] != b"YYSP" {
+        return None;
+    }
+    let w = u16::from_le_bytes([data[4], data[5]]) as u32;
+    let h = u16::from_le_bytes([data[6], data[7]]) as u32;
+    let total = (w as usize).checked_mul(h as usize)?;
+    let mut px = Vec::with_capacity(total);
+    let mut i = 8;
+    while i < data.len() && px.len() < total {
+        let tag = data[i];
+        i += 1;
+        if tag < 128 {
+            let cnt = tag as usize + 1;
+            if i + cnt * 4 > data.len() {
+                return None;
+            }
+            for _ in 0..cnt {
+                px.push(u32::from_le_bytes([data[i], data[i + 1], data[i + 2], data[i + 3]]));
+                i += 4;
+            }
+        } else {
+            let cnt = tag as usize - 126;
+            if i + 4 > data.len() {
+                return None;
+            }
+            let val = u32::from_le_bytes([data[i], data[i + 1], data[i + 2], data[i + 3]]);
+            i += 4;
+            let rem = total - px.len();
+            px.resize(px.len() + cnt.min(rem), val);
+        }
+    }
+    if px.len() == total { Some((w, h, px)) } else { None }
+}
+
+fn vehicle_cell(u: &Unit) -> usize {
+    u.nation.index() * 7 + u.ti.min(6)
+}
+
+fn unit_oblique_cell(u: &Unit) -> usize {
+    if u.kind == Kind::Decoy && (u.side == 0 || u.revealed) {
+        CELL_DECOY
+    } else {
+        vehicle_cell(u)
+    }
+}
+
+fn unit_oblique_radius(s: &TankSpec) -> f32 {
+    TS * (0.68 + s.len * 0.34)
+}
+
+fn unit_flip_x(u: &Unit) -> bool {
+    let dir = if u.spec().turret && matches!(u.order, Order::Attack(_)) { u.turret } else { u.hull };
+    dir.cos() < -0.05
+}
+
+fn push_tank_sprites(g: &mut Gfx, u: &Unit, alpha: f32) {
+    let dead = !u.alive;
+    let cell = unit_oblique_cell(u);
+    let r = unit_oblique_radius(u.spec());
+    let flip_x = unit_flip_x(u);
+    let tint = if dead { [0.30, 0.30, 0.30, alpha] } else { [1.0, 1.0, 1.0, alpha] };
+    g.push_sprite(u.pos.0, u.pos.1 - r * 0.20, r, r, 0.0, atlas_uv(cell, flip_x), tint);
+}
+
+fn push_drone_sprites(g: &mut Gfx, u: &Unit, clock: f32) {
+    let p = u.pos;
+    let r = TS * 0.72;
+    let bob = (clock * 3.5).sin() * 2.5;
+    let flip_x = u.hull.cos() < -0.05;
+    g.push_sprite(p.0, p.1 - r * 0.22 + bob, r, r, 0.0, atlas_uv(CELL_DRONE, flip_x), [1.0, 1.0, 1.0, 1.0]);
+}
+
+fn draw_tank_with_atlas(g: &mut Gfx, atlas: Option<&Texture>, u: &Unit, alpha: f32) {
+    if let Some(at) = atlas {
+        g.begin_sprites();
+        push_tank_sprites(g, u, alpha);
+        g.end_sprites(at, true);
+    } else {
+        draw_tank_fallback(g, u, alpha);
+    }
+}
+
+fn draw_tank_fallback(g: &mut Gfx, u: &Unit, alpha: f32) {
     let s: &TankSpec = u.spec();
     let (l, wd) = (s.len * TS, s.wid * TS);
     let dead = !u.alive;
@@ -1627,10 +1910,6 @@ fn draw_tank(g: &mut Gfx, u: &Unit, alpha: f32, clock: f32) {
     let camo = with_a(shade(u.nation.camo(), k), alpha);
     let dark = with_a(shade([0.16, 0.15, 0.13, 1.0], if dead { 0.6 } else { 1.0 }), alpha);
     let p = u.pos;
-    // 陣営の印（足元の円）
-    if !dead {
-        g.circle(p.0, p.1, l * 0.62, 20, with_a(side_color(u.side), 0.22 * alpha));
-    }
     // 影
     quad(g, (p.0 + 3.0, p.1 + 4.0), u.hull, 0.0, l / 2.0, wd / 2.0, [0.0, 0.0, 0.0, 0.3 * alpha]);
     // 履帯
@@ -1667,20 +1946,21 @@ fn draw_tank(g: &mut Gfx, u: &Unit, alpha: f32, clock: f32) {
         g.line(start, (start.0 + a.cos() * blen, start.1 + a.sin() * blen), bar_w, dark);
         quad(g, p, u.hull, l * 0.02, l * 0.24, wd * 0.28, with_a(shade(u.nation.hull(), 0.85 * k), alpha));
     }
-    if dead {
-        // 燃える残骸の煙
-        let t = u.dead_t;
-        let n = 3;
-        for i in 0..n {
-            let ph = (clock * 0.6 + i as f32 / n as f32).fract();
-            let r = TS * (0.2 + ph * 0.5);
-            let a = (0.35 * (1.0 - ph)) * (1.0 - (t / 60.0).min(0.8));
-            g.circle(p.0 + ph * TS * 0.6, p.1 - ph * TS * 1.2, r, 12, [0.2, 0.2, 0.2, a]);
-        }
-        if t < 8.0 {
-            let fl = 0.5 + 0.5 * (clock * 12.0).sin();
-            g.circle(p.0, p.1, TS * 0.18 * (1.0 + fl * 0.3), 8, [1.0, 0.5, 0.1, 0.7 * (1.0 - t / 8.0)]);
-        }
+}
+
+fn draw_wreck_fx(g: &mut Gfx, u: &Unit, clock: f32) {
+    let p = u.pos;
+    let t = u.dead_t;
+    let n = 3;
+    for i in 0..n {
+        let ph = (clock * 0.6 + i as f32 / n as f32).fract();
+        let r = TS * (0.2 + ph * 0.5);
+        let a = (0.35 * (1.0 - ph)) * (1.0 - (t / 60.0).min(0.8));
+        g.circle(p.0 + ph * TS * 0.6, p.1 - ph * TS * 1.2, r, 12, [0.2, 0.2, 0.2, a]);
+    }
+    if t < 8.0 {
+        let fl = 0.5 + 0.5 * (clock * 12.0).sin();
+        g.circle(p.0, p.1, TS * 0.18 * (1.0 + fl * 0.3), 8, [1.0, 0.5, 0.1, 0.7 * (1.0 - t / 8.0)]);
     }
 }
 
@@ -1719,6 +1999,16 @@ mod tests {
         for (n, i) in crate::data::all_tanks() {
             let u = ghost_unit(n, i, (100.0, 100.0));
             assert_eq!(u.spec().name, n.tanks()[i].name);
+            assert!(vehicle_cell(&u) < VEHICLE_COUNT);
         }
+    }
+
+    #[test]
+    fn oblique_atlas_decodes_cleanly() {
+        let (w, h, px) = decode_atlas_rle(OBLIQUE_ATLAS_RLE).expect("valid RLE atlas");
+        assert_eq!(w, (ATLAS_COLS * 128) as u32);
+        assert_eq!(h, (ATLAS_ROWS * 128) as u32);
+        assert_eq!(px.len(), (w * h) as usize);
+        assert!(px.iter().any(|&p| p != 0));
     }
 }

@@ -31,7 +31,8 @@ fn write_res_header(out: &mut Vec<u8>, data_size: u32, res_type: u16, res_id: u1
 }
 
 fn main() {
-    println!("cargo:rerun-if-changed=assets/app_icon.ico");
+    const ICON_PATH: &str = "assets/branding/steel-front.ico";
+    println!("cargo:rerun-if-changed={ICON_PATH}");
     // ログに書く版（クラッシュの行番号をソースと突き合わせるため）
     println!("cargo:rerun-if-changed=.git/logs/HEAD");
     let git = std::process::Command::new("git").args(["rev-parse", "--short", "HEAD"]).output();
@@ -43,7 +44,7 @@ fn main() {
     if os != "windows" || tenv != "msvc" {
         return;
     }
-    let ico = fs::read("assets/app_icon.ico").expect("failed to read assets/app_icon.ico");
+    let ico = fs::read(ICON_PATH).expect("failed to read the Steel Front icon");
     let count = u16::from_le_bytes([ico[4], ico[5]]) as usize;
 
     let mut res = Vec::new();

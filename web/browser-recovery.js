@@ -55,7 +55,9 @@
       // CacheStorage is separate from IndexedDB/localStorage. In a shared
       // origin, remove only this game's known files, keeping other games.
       const assets = new Set([base.href, next.origin + next.pathname,
-        ...['index.html', 'main.js', 'browser-recovery.js', 'manifest.webmanifest', 'favicon.ico', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'key-art.jpg']
+        ...['index.html', 'main.js', 'browser-recovery.js', 'manifest.webmanifest', 'favicon.ico',
+          'steel-front-192.png', 'steel-front-512.png', 'steel-front-apple.png', 'steel-front.jpg',
+          'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'key-art.jpg']
           .map((file) => new URL(file, base).href)]);
       // The Wasm filename is supplied in the HTML (directory names may differ).
       if (document.body.dataset.gameWasm) assets.add(new URL(document.body.dataset.gameWasm, base).href);

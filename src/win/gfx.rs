@@ -60,6 +60,7 @@ pub enum Font {
     Title,
     /// 題字（Title が扁額に収まらないとき）
     TitleMid,
+    CoverTitle,
 }
 
 /// 画像（Direct2D のビットマップ）。ブラウザ版と同じ名前で使う
@@ -143,7 +144,7 @@ fn make_fonts(dwrite: &IDWriteFactory) -> Result<Vec<IDWriteTextFormat>> {
         crate::lang::Lang::Zh => (w!("Microsoft YaHei UI"), w!("zh-cn")),
         crate::lang::Lang::En => (w!("Segoe UI"), w!("en-us")),
     };
-    let specs: [(f32, bool, bool); 7] = [
+    let specs: [(f32, bool, bool); 8] = [
         (12.0, false, false),
         (14.0, false, false),
         (14.0, true, false),
@@ -152,6 +153,7 @@ fn make_fonts(dwrite: &IDWriteFactory) -> Result<Vec<IDWriteTextFormat>> {
         (40.0, true, true),
         // TitleMid：題字が扁額に収まらないとき
         (30.0, true, true),
+        (64.0, false, true),
     ];
     let mut fonts = Vec::new();
     for (size, center, bold) in specs {
@@ -592,6 +594,44 @@ impl Gfx {
         }
         let v = |x, y, u, vv| Vertex { x, y, u, v: vv, c };
         self.verts.extend_from_slice(&[v(x0, y0, 0.0, 0.0), v(x1, y0, 1.0, 0.0), v(x1, y1, 1.0, 1.0), v(x0, y0, 0.0, 0.0), v(x1, y1, 1.0, 1.0), v(x0, y1, 0.0, 1.0)]);
+        self.upload_draw();
+    }
+
+    pub fn begin_sprites(&mut self) {
+        self.flush();
+    }
+
+    pub fn push_sprite(&mut self, cx: f32, cy: f32, hl: f32, hw: f32, angle: f32, uv: [f32; 4], c: [f32; 4]) {
+        if self.verts.len() + 6 > MAX_VERTS * 4 {
+            return;
+        }
+        let (ca, sa) = (angle.cos(), angle.sin());
+        let p = |l: f32, w: f32| (cx + ca * l - sa * w, cy + sa * l + ca * w);
+        let a = p(-hl, -hw);
+        let b = p(hl, -hw);
+        let d = p(hl, hw);
+        let e = p(-hl, hw);
+        let v = |pt: (f32, f32), u, vv| Vertex { x: pt.0, y: pt.1, u, v: vv, c };
+        self.verts.extend_from_slice(&[
+            v(a, uv[0], uv[1]),
+            v(b, uv[2], uv[1]),
+            v(d, uv[2], uv[3]),
+            v(a, uv[0], uv[1]),
+            v(d, uv[2], uv[3]),
+            v(e, uv[0], uv[3]),
+        ]);
+    }
+
+    pub fn end_sprites(&mut self, t: &Texture, linear: bool) {
+        if self.verts.is_empty() {
+            return;
+        }
+        unsafe {
+            self.ctx.PSSetShader(&self.ps_tex, None);
+            self.ctx.PSSetShaderResources(0, Some(&[Some(t.srv.clone())]));
+            let s = if linear { self.samp_lin.clone() } else { self.samp_pt.clone() };
+            self.ctx.PSSetSamplers(0, Some(&[Some(s)]));
+        }
         self.upload_draw();
     }
 

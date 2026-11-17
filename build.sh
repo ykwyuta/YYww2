@@ -20,8 +20,8 @@ cargo build --locked --release --lib --target wasm32-unknown-unknown --config pr
 
 rm -rf dist
 mkdir -p dist
-cp web/index.html web/main.js web/browser-recovery.js web/manifest.webmanifest web/icon-192.png web/icon-512.png web/apple-touch-icon.png web/key-art.jpg dist/
-cp assets/app_icon.ico dist/favicon.ico
+cp web/index.html web/main.js web/browser-recovery.js web/manifest.webmanifest web/steel-front-192.png web/steel-front-512.png web/steel-front-apple.png web/steel-front.jpg dist/
+cp assets/branding/steel-front.ico dist/favicon.ico
 cp target/wasm32-unknown-unknown/release/yyww2.wasm dist/
 # wasm-opt があればさらに小さくする（任意）
 if command -v wasm-opt >/dev/null 2>&1; then

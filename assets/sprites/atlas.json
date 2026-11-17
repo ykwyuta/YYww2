@@ -1,0 +1,336 @@
+{
+  "sprite_size": 512,
+  "columns": 4,
+  "rows": 12,
+  "sprites": {
+    "decoy_tank": {
+      "file": "decoy_tank.png",
+      "x": 0,
+      "y": 0,
+      "w": 512,
+      "h": 512
+    },
+    "decoy_wreck": {
+      "file": "decoy_wreck.png",
+      "x": 512,
+      "y": 0,
+      "w": 512,
+      "h": 512
+    },
+    "dragons_teeth": {
+      "file": "dragons_teeth.png",
+      "x": 1024,
+      "y": 0,
+      "w": 512,
+      "h": 512
+    },
+    "hq_bunker": {
+      "file": "hq_bunker.png",
+      "x": 1536,
+      "y": 0,
+      "w": 512,
+      "h": 512
+    },
+    "recon_drone": {
+      "file": "recon_drone.png",
+      "x": 0,
+      "y": 512,
+      "w": 512,
+      "h": 512
+    },
+    "tank_de_luchs": {
+      "file": "tank_de_luchs.png",
+      "x": 512,
+      "y": 512,
+      "w": 512,
+      "h": 512
+    },
+    "tank_de_maus": {
+      "file": "tank_de_maus.png",
+      "x": 1024,
+      "y": 512,
+      "w": 512,
+      "h": 512
+    },
+    "tank_de_panther_g": {
+      "file": "tank_de_panther_g.png",
+      "x": 1536,
+      "y": 512,
+      "w": 512,
+      "h": 512
+    },
+    "tank_de_panzer3_j": {
+      "file": "tank_de_panzer3_j.png",
+      "x": 0,
+      "y": 1024,
+      "w": 512,
+      "h": 512
+    },
+    "tank_de_panzer4_h": {
+      "file": "tank_de_panzer4_h.png",
+      "x": 512,
+      "y": 1024,
+      "w": 512,
+      "h": 512
+    },
+    "tank_de_stug3_g": {
+      "file": "tank_de_stug3_g.png",
+      "x": 1024,
+      "y": 1024,
+      "w": 512,
+      "h": 512
+    },
+    "tank_it_l3_33": {
+      "file": "tank_it_l3_33.png",
+      "x": 1536,
+      "y": 1024,
+      "w": 512,
+      "h": 512
+    },
+    "tank_it_l6_40": {
+      "file": "tank_it_l6_40.png",
+      "x": 0,
+      "y": 1536,
+      "w": 512,
+      "h": 512
+    },
+    "tank_it_m13_40": {
+      "file": "tank_it_m13_40.png",
+      "x": 512,
+      "y": 1536,
+      "w": 512,
+      "h": 512
+    },
+    "tank_it_p26_40": {
+      "file": "tank_it_p26_40.png",
+      "x": 1024,
+      "y": 1536,
+      "w": 512,
+      "h": 512
+    },
+    "tank_it_p43_bis": {
+      "file": "tank_it_p43_bis.png",
+      "x": 1536,
+      "y": 1536,
+      "w": 512,
+      "h": 512
+    },
+    "tank_it_semovente_75_18": {
+      "file": "tank_it_semovente_75_18.png",
+      "x": 0,
+      "y": 2048,
+      "w": 512,
+      "h": 512
+    },
+    "tank_it_semovente_90_53": {
+      "file": "tank_it_semovente_90_53.png",
+      "x": 512,
+      "y": 2048,
+      "w": 512,
+      "h": 512
+    },
+    "tank_jp_chiha_shinhoto": {
+      "file": "tank_jp_chiha_shinhoto.png",
+      "x": 1024,
+      "y": 2048,
+      "w": 512,
+      "h": 512
+    },
+    "tank_jp_chihe": {
+      "file": "tank_jp_chihe.png",
+      "x": 1536,
+      "y": 2048,
+      "w": 512,
+      "h": 512
+    },
+    "tank_jp_chinu": {
+      "file": "tank_jp_chinu.png",
+      "x": 0,
+      "y": 2560,
+      "w": 512,
+      "h": 512
+    },
+    "tank_jp_hago": {
+      "file": "tank_jp_hago.png",
+      "x": 512,
+      "y": 2560,
+      "w": 512,
+      "h": 512
+    },
+    "tank_jp_horo": {
+      "file": "tank_jp_horo.png",
+      "x": 1024,
+      "y": 2560,
+      "w": 512,
+      "h": 512
+    },
+    "tank_jp_kami": {
+      "file": "tank_jp_kami.png",
+      "x": 1536,
+      "y": 2560,
+      "w": 512,
+      "h": 512
+    },
+    "tank_jp_oi": {
+      "file": "tank_jp_oi.png",
+      "x": 0,
+      "y": 3072,
+      "w": 512,
+      "h": 512
+    },
+    "tank_ru_is2": {
+      "file": "tank_ru_is2.png",
+      "x": 512,
+      "y": 3072,
+      "w": 512,
+      "h": 512
+    },
+    "tank_ru_isu152": {
+      "file": "tank_ru_isu152.png",
+      "x": 1024,
+      "y": 3072,
+      "w": 512,
+      "h": 512
+    },
+    "tank_ru_kv5": {
+      "file": "tank_ru_kv5.png",
+      "x": 1536,
+      "y": 3072,
+      "w": 512,
+      "h": 512
+    },
+    "tank_ru_t34_76": {
+      "file": "tank_ru_t34_76.png",
+      "x": 0,
+      "y": 3584,
+      "w": 512,
+      "h": 512
+    },
+    "tank_ru_t35": {
+      "file": "tank_ru_t35.png",
+      "x": 512,
+      "y": 3584,
+      "w": 512,
+      "h": 512
+    },
+    "tank_ru_t70": {
+      "file": "tank_ru_t70.png",
+      "x": 1024,
+      "y": 3584,
+      "w": 512,
+      "h": 512
+    },
+    "tank_t34_85": {
+      "file": "tank_t34_85.png",
+      "x": 1536,
+      "y": 3584,
+      "w": 512,
+      "h": 512
+    },
+    "tank_tiger1": {
+      "file": "tank_tiger1.png",
+      "x": 0,
+      "y": 4096,
+      "w": 512,
+      "h": 512
+    },
+    "tank_uk_bishop": {
+      "file": "tank_uk_bishop.png",
+      "x": 512,
+      "y": 4096,
+      "w": 512,
+      "h": 512
+    },
+    "tank_uk_churchill7": {
+      "file": "tank_uk_churchill7.png",
+      "x": 1024,
+      "y": 4096,
+      "w": 512,
+      "h": 512
+    },
+    "tank_uk_cromwell": {
+      "file": "tank_uk_cromwell.png",
+      "x": 1536,
+      "y": 4096,
+      "w": 512,
+      "h": 512
+    },
+    "tank_uk_crusader3": {
+      "file": "tank_uk_crusader3.png",
+      "x": 0,
+      "y": 4608,
+      "w": 512,
+      "h": 512
+    },
+    "tank_uk_firefly": {
+      "file": "tank_uk_firefly.png",
+      "x": 512,
+      "y": 4608,
+      "w": 512,
+      "h": 512
+    },
+    "tank_uk_tetrarch": {
+      "file": "tank_uk_tetrarch.png",
+      "x": 1024,
+      "y": 4608,
+      "w": 512,
+      "h": 512
+    },
+    "tank_uk_tog2": {
+      "file": "tank_uk_tog2.png",
+      "x": 1536,
+      "y": 4608,
+      "w": 512,
+      "h": 512
+    },
+    "tank_us_m22_locust": {
+      "file": "tank_us_m22_locust.png",
+      "x": 0,
+      "y": 5120,
+      "w": 512,
+      "h": 512
+    },
+    "tank_us_m26_pershing": {
+      "file": "tank_us_m26_pershing.png",
+      "x": 512,
+      "y": 5120,
+      "w": 512,
+      "h": 512
+    },
+    "tank_us_m4_sherman": {
+      "file": "tank_us_m4_sherman.png",
+      "x": 1024,
+      "y": 5120,
+      "w": 512,
+      "h": 512
+    },
+    "tank_us_m4a3e8": {
+      "file": "tank_us_m4a3e8.png",
+      "x": 1536,
+      "y": 5120,
+      "w": 512,
+      "h": 512
+    },
+    "tank_us_m5_stuart": {
+      "file": "tank_us_m5_stuart.png",
+      "x": 0,
+      "y": 5632,
+      "w": 512,
+      "h": 512
+    },
+    "tank_us_m7_priest": {
+      "file": "tank_us_m7_priest.png",
+      "x": 512,
+      "y": 5632,
+      "w": 512,
+      "h": 512
+    },
+    "tank_us_t28": {
+      "file": "tank_us_t28.png",
+      "x": 1024,
+      "y": 5632,
+      "w": 512,
+      "h": 512
+    }
+  }
+}

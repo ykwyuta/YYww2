@@ -3,16 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#1a1c14" />
+    <meta name="theme-color" content="#171912" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="鋼鉄の大地" />
-    <link rel="manifest" href="./manifest.webmanifest?v=ww2-1" />
-    <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=ww2-1" />
+    <link rel="manifest" href="./manifest.webmanifest?v=ww2-2" />
+    <link rel="apple-touch-icon" href="./steel-front-apple.png" />
     <meta name="description" content="鋼鉄の大地 — 第二次世界大戦の戦車で戦うリアルタイムストラテジー（ブラウザ版）" />
     <title>鋼鉄の大地 — 第二次大戦戦車戦</title>
-    <link rel="icon" href="./favicon.ico?v=ww2-1" sizes="any" />
+    <link rel="icon" href="./favicon.ico?v=ww2-2" sizes="any" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Noto+Sans+SC:wght@400;700&display=swap" rel="stylesheet" />
@@ -35,15 +35,15 @@
       /* 縦持ちでは文字が小さくなりすぎるので、横向きを促す（スマートフォン・タブレットとも） */
       @media (orientation: portrait) { :root.touch #rotate { display: flex; } }
       #loading { position: fixed; inset: 0; box-sizing: border-box; display: flex; flex-direction: column;
-        align-items: center; justify-content: center; text-align: center;
-        padding: max(12vh, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
-          max(12px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+        align-items: flex-start; justify-content: center; text-align: left;
+        padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+          max(20px, env(safe-area-inset-bottom)) max(6vw, env(safe-area-inset-left));
         color: #fff0cf; font: 18px "Yu Gothic UI", "Noto Sans JP", sans-serif;
-        background: linear-gradient(180deg, rgba(7, 17, 29, 0.12), rgba(7, 17, 29, 0.62) 52%, rgba(7, 17, 29, 0.92)),
-          #1a1c14 url("./key-art.jpg?v=ww2-1") center / cover no-repeat;
+        background: linear-gradient(90deg, rgba(12, 14, 10, 0.86), rgba(12, 14, 10, 0.64) 46%, rgba(12, 14, 10, 0.10)),
+          #171912 url("./steel-front.jpg") 72% center / cover no-repeat;
         gap: clamp(6px, 2vh, 18px); text-shadow: 0 2px 8px #050c16; }
-      #loading h1 { margin: 0; font-family: Georgia, "Yu Mincho", serif; font-size: clamp(30px, 7vw, 72px);
-        letter-spacing: 0.14em; color: #ffe1a0; }
+      #loading h1 { margin: 0; font-size: clamp(30px, 7vw, 72px);
+        font-weight: 800; letter-spacing: 0.065em; color: #ffe1a0; }
       #loading .subtitle { margin: 0; font-size: clamp(13px, 2.7vw, 19px); }
       #loading-msg { font-size: clamp(13px, 2.5vw, 17px); }
       #loading.hidden { display: none; }
