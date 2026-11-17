@@ -187,6 +187,8 @@ pub struct World {
     pub events: Vec<Event>,
     /// 連続して出さないための記録（占領の知らせ）
     cap_warned: [bool; 2],
+    /// 指揮権を返還して副官になっている自軍将軍
+    pub adjutants: [bool; GENERALS.len()],
 }
 
 fn angle_diff(a: f32, b: f32) -> f32 {
@@ -246,6 +248,7 @@ impl World {
             skill: [1.0, 1.0],
             events: Vec::new(),
             cap_warned: [false, false],
+            adjutants: [false; GENERALS.len()],
         }
     }
 
@@ -412,6 +415,61 @@ impl World {
             return false;
         }
         unit.general = general;
+        true
+    }
+
+    /// 戦闘中に指定の将軍から指揮権を返還してもらい、副官扱いにする。
+    pub fn return_general_command(&mut self, general: usize) -> Vec<usize> {
+        if self.phase != Phase::Battle || general >= GENERALS.len() {
+            return Vec::new();
+        }
+        let freed: Vec<usize> = self
+            .units
+            .iter()
+            .enumerate()
+            .filter(|(_, u)| {
+                u.alive && u.side == 0 && u.kind == Kind::Tank && u.general == Some(general)
+            })
+            .map(|(i, _)| i)
+            .collect();
+        if freed.is_empty() {
+            return freed;
+        }
+        for &i in &freed {
+            self.units[i].general = None;
+            self.order(i, Order::Idle);
+        }
+        self.adjutants[general] = true;
+        freed
+    }
+
+    /// 戦闘中に自軍戦車の指揮を将軍（または副官）へ委任する。None で直轄へ戻す。
+    pub fn delegate_in_battle(&mut self, index: usize, general: Option<usize>) -> bool {
+        if self.phase != Phase::Battle || general.is_some_and(|id| id >= GENERALS.len()) {
+            return false;
+        }
+        let Some(unit) = self.units.get_mut(index) else {
+            return false;
+        };
+        if !unit.alive || unit.side != 0 || unit.kind != Kind::Tank || unit.general == general {
+            return false;
+        }
+        let prev = unit.general;
+        unit.general = general;
+        if let Some(id) = general {
+            self.adjutants[id] = false;
+        } else {
+            self.order(index, Order::Idle);
+        }
+        if let Some(old_id) = prev {
+            let remaining = self
+                .units
+                .iter()
+                .any(|u| u.alive && u.side == 0 && u.kind == Kind::Tank && u.general == Some(old_id));
+            if !remaining {
+                self.adjutants[old_id] = true;
+            }
+        }
         true
     }
 

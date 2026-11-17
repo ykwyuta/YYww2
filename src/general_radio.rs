@@ -77,6 +77,7 @@ pub fn expression_pixels(general: usize, cue: Cue) -> Vec<u32> {
 #[derive(Clone, Copy, Default)]
 struct Status {
     alive: usize,
+    dead: usize,
     advancing: bool,
     contact: bool,
     danger: bool,
@@ -149,6 +150,7 @@ impl Radio {
             .units
             .iter()
             .any(|unit| unit.side == side && unit.general.is_some())
+            && self.last[side].iter().all(|s| s.alive == 0)
         {
             return;
         }
@@ -164,10 +166,17 @@ impl Radio {
         let forward = if side == 0 { 1.0 } else { -1.0 };
         let mut groups = [Group::default(); GENERALS.len()];
         for (i, unit) in world.units.iter().enumerate() {
-            if !unit.alive || unit.side != side || (side == 1 && !world.targetable_by(0, i)) {
+            if unit.side != side {
                 continue;
             }
             let Some(id) = unit.general else { continue };
+            if !unit.alive {
+                groups[id].status.dead += 1;
+                continue;
+            }
+            if side == 1 && !world.targetable_by(0, i) {
+                continue;
+            }
             let group = &mut groups[id];
             let threats = visible
                 .iter()
@@ -192,10 +201,13 @@ impl Radio {
         for (id, mut group) in groups.into_iter().enumerate() {
             let prior = self.last[side][id];
             let status = &mut group.status;
-            if side == 1 && status.alive == 0 {
+            if (side == 1 || world.adjutants[id]) && status.alive == 0 {
                 self.last[side][id] = Status::default();
                 self.pending
                     .retain(|report| report.side != side || report.general != id);
+                if self.current.is_some_and(|(r, _)| r.side == side && r.general == id) {
+                    self.current = None;
+                }
                 continue;
             }
             if status.alive == 0 && prior.alive == 0 {
@@ -209,7 +221,7 @@ impl Radio {
             };
             let aid = group.aid_at.and_then(|((critical, threats), tile)| {
                 (critical
-                    || (side == 0 && status.alive < prior.alive && threats >= status.alive)
+                    || (side == 0 && status.dead > prior.dead && threats >= status.alive)
                     || threats > status.alive + 1)
                     .then_some(tile)
             });
@@ -225,7 +237,7 @@ impl Radio {
                 ),
                 (Cue::Contact, status.contact && !prior.contact),
                 (Cue::Danger, status.danger && !prior.danger && aid.is_none()),
-                (Cue::Loss, side == 0 && status.alive < prior.alive),
+                (Cue::Loss, side == 0 && status.dead > prior.dead),
                 (
                     Cue::Relief,
                     prior.contact && !status.contact && status.alive > 0,
@@ -412,5 +424,37 @@ mod tests {
         world.phase = Phase::Over;
         radio.update(&world, 0.0, false);
         assert_eq!(radio.current().unwrap().cue, Cue::Victory);
+    }
+
+    #[test]
+    fn returning_command_avoids_loss_report_and_redelegation_triggers_ready() {
+        let mut world = World::new(Field::Kursk, 13, 3000);
+        world.units.push(World::new_unit(
+            0,
+            Kind::Tank,
+            Nation::Germany,
+            0,
+            center((12, 25)),
+        ));
+        assert!(world.assign_general(0, Some(2)));
+        world.start_battle();
+
+        let mut radio = Radio::default();
+        radio.update(&world, 0.0, false);
+        assert_eq!(radio.current().unwrap().cue, Cue::Ready);
+        radio.update(&world, 6.0, false);
+        assert!(radio.current().is_some_and(|r| r.cue == Cue::Hold));
+        radio.update(&world, 6.0, false);
+        assert!(radio.current().is_none());
+
+        assert_eq!(world.return_general_command(2), vec![0]);
+        world.time = 2.0;
+        radio.update(&world, 0.0, false);
+        assert!(radio.current().is_none());
+
+        assert!(world.delegate_in_battle(0, Some(2)));
+        world.time = 4.0;
+        radio.update(&world, 0.0, false);
+        assert_eq!(radio.current().unwrap().cue, Cue::Ready);
     }
 }
