@@ -1,0 +1,147 @@
+{
+  "generator": "Built-in image_gen",
+  "purpose": "Dedicated large signature-skill cut-in illustrations",
+  "original_size": [
+    1536,
+    1024
+  ],
+  "runtime_size": [
+    768,
+    512
+  ],
+  "characters": [
+    {
+      "id": "rin_asagiri",
+      "reference": "../rin_asagiri.png",
+      "file": "rin_asagiri.png",
+      "packed": "rin_asagiri.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: female commander pointing forward with a cream scarf flowing, tank silhouettes surging through golden dust, breakthrough vanguard. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "yui_mizuno",
+      "reference": "../yui_mizuno.png",
+      "file": "yui_mizuno.png",
+      "packed": "yui_mizuno.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: green-haired female marksman commander raising binoculars, precise green targeting streaks through forest mist, silent marksman. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "shiori_fujimori",
+      "reference": "../shiori_fujimori.png",
+      "file": "shiori_fujimori.png",
+      "packed": "shiori_fujimori.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: lavender-braided female commander with round glasses behind a translucent blue tactical barrier, armor silhouettes holding a defensive line, unbroken wall. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "akane_kujo",
+      "reference": "../akane_kujo.png",
+      "file": "akane_kujo.png",
+      "packed": "akane_kujo.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: red-haired female officer in ivory uniform dramatically raising a gloved hand in a dawn rally, blazing sunrise and gold banners of light. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "rei_tachibana",
+      "reference": "../rei_tachibana.png",
+      "file": "rei_tachibana.png",
+      "packed": "rei_tachibana.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: blue-haired female officer in navy uniform leaning into a decisive forward command pose, cobalt wind trails and distant racing tank silhouettes, gale wings. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "mio_kisaragi",
+      "reference": "../mio_kisaragi.png",
+      "file": "mio_kisaragi.png",
+      "packed": "mio_kisaragi.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: long brown-haired female officer in burgundy uniform gazing through a field scope, silver-blue mist and long luminous sight lines. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "leon_vogel",
+      "reference": "../leon_vogel.png",
+      "file": "leon_vogel.png",
+      "packed": "leon_vogel.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: blond male officer in navy uniform commanding a heavy armored breakthrough, fierce focused eyes, brilliant gold steel-piercing light. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "mikhail_ivanov",
+      "reference": "../mikhail_ivanov.png",
+      "file": "mikhail_ivanov.png",
+      "packed": "mikhail_ivanov.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: bearded gray-haired veteran in dark winter uniform standing firm in snow, frost-blue shield motifs and snow-covered tank silhouettes. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "julian_arden",
+      "reference": "../julian_arden.png",
+      "file": "julian_arden.png",
+      "packed": "julian_arden.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: wavy brown-haired male officer in slate-blue uniform sweeping one arm outward to signal a flank attack, violet speed arcs and vehicle dust trails. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "kai_kuroda",
+      "reference": "../kai_kuroda.png",
+      "file": "kai_kuroda.png",
+      "packed": "kai_kuroda.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: dark close-cropped male veteran wearing a dark tactical coat, low decisive combat command stance, teal searchlight slicing night fog. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "daisuke_shiba",
+      "reference": "../daisuke_shiba.png",
+      "file": "daisuke_shiba.png",
+      "packed": "daisuke_shiba.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: grizzled gray-haired male commander in heavy coat directing defensive fire from a command post, amber shell streaks and hard blue shield shapes. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "naoto_kagami",
+      "reference": "../naoto_kagami.png",
+      "file": "naoto_kagami.png",
+      "packed": "naoto_kagami.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: short navy-haired male field mechanic commander in gray coat rolling up a sleeve, repair sparks, warm copper light and moving armored convoy. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "sena_kirihara",
+      "reference": "../sena_kirihara.png",
+      "file": "sena_kirihara.png",
+      "packed": "sena_kirihara.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: blond-bob female scout wearing red scarf and brown field jacket, raising binoculars with confident smile, orange meteor speed streaks over field. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "lucas_wren",
+      "reference": "../lucas_wren.png",
+      "file": "lucas_wren.png",
+      "packed": "lucas_wren.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: tousled auburn-haired young male commander in high-collar gray coat with cream scarf, steady marksman gaze and gold hawk-shaped light trails. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "isuzu_takamine",
+      "reference": "../isuzu_takamine.png",
+      "file": "isuzu_takamine.png",
+      "packed": "isuzu_takamine.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: long purple-haired female officer in black cloak commanding rapid volleys, violet rhythmic streaks, bold sweeping arm gesture. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "emil_falk",
+      "reference": "../emil_falk.png",
+      "file": "emil_falk.png",
+      "packed": "emil_falk.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: silver-haired male officer in dark blue uniform with green scarf, fierce heavy assault command, amber wedge of light and heavy tank silhouettes. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "hotaru_amane",
+      "reference": "../hotaru_amane.png",
+      "file": "hotaru_amane.png",
+      "packed": "hotaru_amane.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: white-haired adult female radio officer in olive beret and khaki uniform holding a field radio, warm firefly lights and green tactical map glow. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "nazuna_shiraishi",
+      "reference": "../nazuna_shiraishi.png",
+      "file": "nazuna_shiraishi.png",
+      "packed": "nazuna_shiraishi.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: peach-haired adult female support officer in blue uniform wearing radio headset, confident healing command with gentle cyan light and white blossom motifs. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    },
+    {
+      "id": "viktor_crow",
+      "reference": "../viktor_crow.png",
+      "file": "viktor_crow.png",
+      "packed": "viktor_crow.yyci",
+      "prompt": "Use case: stylized-concept. Create ONE finished large landscape 1536x1024 special-skill cut-in illustration for a fictional WWII-style tank strategy game. Reference image is ONLY the character identity, costume and style reference; preserve the same recognizable adult face, hair, clothing palette, single character and high-quality 2D drawing style. This must be NEW dynamic waist-up action key art, not an enlarged portrait. Scene and skill motif: stern swept-back dark-haired male veteran with gray goatee in black coat, turning dramatically with one arm extended, black wing silhouettes and crimson reprisal sparks. Composition: character on RIGHT TWO THIRDS, expressive face large and fully inside frame with 8% head clearance, pose and weapon can extend toward center; LEFT THIRD is atmospheric deep navy negative space for titles added by game code. Dramatic light, sharp clear silhouette, skill-colored flowing energy trails, refined premium game illustration. One continuous illustration, no panel or grid. No text, captions, numbers, letters, user interface, watermarks, logos, historical extremist insignia, 3D or CGI. No traditional Japanese painting, ukiyo-e, woodblock or ink wash. Characters adult and fully clothed."
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 //! 将軍の名簿と、委任された自軍戦車の自動指揮。
 
 use crate::data::Terrain;
+use crate::general_skills::{Bonuses, Skill, Trigger};
 use crate::map::{center, idx, inside, tile_of, MH, MW, TS};
 use crate::sim::{dist, Kind, Order, Phase, Target, Unit, World, CAPTURE_R};
 
@@ -62,6 +63,7 @@ impl Strategy {
 pub struct General {
     names: [&'static str; 3],
     pub strategy: Strategy,
+    pub skill: Skill,
 }
 
 impl General {
@@ -76,79 +78,79 @@ use Strategy::{Defense, Guerrilla, Offensive, Raid};
 pub const GENERALS: [General; 19] = [
     General {
         names: ["朝霧 凛", "Rin Asagiri", "朝雾 凛"],
-        strategy: Offensive,
+        strategy: Offensive, skill: Skill { names: ["突破の先鋒", "Breakthrough Vanguard", "突破先锋"], trigger: Trigger::Passive, bonuses: Bonuses { damage: 1.25, speed: 1.1, ..Bonuses::NONE } },
     },
     General {
         names: ["水野 結衣", "Yui Mizuno", "水野 结衣"],
-        strategy: Guerrilla,
+        strategy: Guerrilla, skill: Skill { names: ["静かな狙撃", "Silent Marksman", "无声狙击"], trigger: Trigger::Passive, bonuses: Bonuses { penetration: 1.35, sight: 1.2, ..Bonuses::NONE } },
     },
     General {
         names: ["藤森 栞", "Shiori Fujimori", "藤森 栞"],
-        strategy: Defense,
+        strategy: Defense, skill: Skill { names: ["不落の防壁", "Unbroken Wall", "不破之壁"], trigger: Trigger::Passive, bonuses: Bonuses { armor: 1.45, ..Bonuses::NONE } },
     },
     General {
         names: ["九条 茜", "Akane Kujo", "九条 茜"],
-        strategy: Offensive,
+        strategy: Offensive, skill: Skill { names: ["暁の号令", "Dawn Rally", "拂晓号令"], trigger: Trigger::Once, bonuses: Bonuses { damage: 1.5, ..Bonuses::NONE } },
     },
     General {
         names: ["橘 玲", "Rei Tachibana", "橘 玲"],
-        strategy: Raid,
+        strategy: Raid, skill: Skill { names: ["疾風の翼", "Wings of the Gale", "疾风之翼"], trigger: Trigger::Passive, bonuses: Bonuses { speed: 1.5, range: 1.2, ..Bonuses::NONE } },
     },
     General {
         names: ["如月 澪", "Mio Kisaragi", "如月 澪"],
-        strategy: Guerrilla,
+        strategy: Guerrilla, skill: Skill { names: ["霧の射線", "Misty Sightline", "雾中射线"], trigger: Trigger::Passive, bonuses: Bonuses { range: 1.3, sight: 1.25, ..Bonuses::NONE } },
     },
     General {
         names: ["レオン・フォーゲル", "Leon Vogel", "莱昂·福格尔"],
-        strategy: Offensive,
+        strategy: Offensive, skill: Skill { names: ["鋼鉄を穿つ牙", "Steel Piercer", "穿钢之牙"], trigger: Trigger::Passive, bonuses: Bonuses { penetration: 1.5, ..Bonuses::NONE } },
     },
     General {
         names: ["ミハイル・イワノフ", "Mikhail Ivanov", "米哈伊尔·伊万诺夫"],
-        strategy: Defense,
+        strategy: Defense, skill: Skill { names: ["冬将軍の砦", "Winter Fortress", "寒冬堡垒"], trigger: Trigger::Passive, bonuses: Bonuses { armor: 1.3, repair: 0.001, ..Bonuses::NONE } },
     },
     General {
         names: ["ジュリアン・アーデン", "Julian Arden", "朱利安·阿登"],
-        strategy: Raid,
+        strategy: Raid, skill: Skill { names: ["旋回急襲", "Sweeping Raid", "迂回急袭"], trigger: Trigger::Passive, bonuses: Bonuses { speed: 1.35, fire_rate: 1.2, ..Bonuses::NONE } },
     },
     General {
         names: ["黒田 海", "Kai Kuroda", "黑田 海"],
-        strategy: Guerrilla,
+        strategy: Guerrilla, skill: Skill { names: ["影の一撃", "Shadow Strike", "暗影一击"], trigger: Trigger::Passive, bonuses: Bonuses { damage: 1.2, penetration: 1.2, ..Bonuses::NONE } },
     },
     General {
         names: ["芝 大輔", "Daisuke Shiba", "芝 大辅"],
-        strategy: Defense,
+        strategy: Defense, skill: Skill { names: ["防衛火網", "Defensive Fire Net", "防御火网"], trigger: Trigger::Passive, bonuses: Bonuses { armor: 1.25, range: 1.2, ..Bonuses::NONE } },
     },
     General {
         names: ["加賀美 直人", "Naoto Kagami", "加贺美 直人"],
-        strategy: Raid,
+        strategy: Raid, skill: Skill { names: ["機動整備隊", "Mobile Workshop", "机动维修"], trigger: Trigger::Passive, bonuses: Bonuses { repair: 0.003, speed: 1.15, ..Bonuses::NONE } },
     },
     General {
         names: ["桐原 星奈", "Sena Kirihara", "桐原 星奈"],
-        strategy: Raid,
+        strategy: Raid, skill: Skill { names: ["流星偵察", "Meteor Recon", "流星侦察"], trigger: Trigger::Passive, bonuses: Bonuses { speed: 1.6, sight: 1.3, ..Bonuses::NONE } },
     },
     General {
         names: ["ルーカス・レン", "Lucas Wren", "卢卡斯·伦"],
-        strategy: Defense,
+        strategy: Defense, skill: Skill { names: ["鷹の照準", "Hawk Sight", "鹰眼瞄准"], trigger: Trigger::Passive, bonuses: Bonuses { range: 1.35, penetration: 1.15, ..Bonuses::NONE } },
     },
     General {
         names: ["高峰 いすず", "Isuzu Takamine", "高峰 五十铃"],
-        strategy: Guerrilla,
+        strategy: Guerrilla, skill: Skill { names: ["連射の律動", "Rapid Rhythm", "连射节奏"], trigger: Trigger::Passive, bonuses: Bonuses { fire_rate: 1.5, ..Bonuses::NONE } },
     },
     General {
         names: ["エミール・ファルク", "Emil Falk", "埃米尔·法尔克"],
-        strategy: Offensive,
+        strategy: Offensive, skill: Skill { names: ["重撃の楔", "Heavy Wedge", "重击之楔"], trigger: Trigger::Passive, bonuses: Bonuses { damage: 1.4, ..Bonuses::NONE } },
     },
     General {
         names: ["天音 ほたる", "Hotaru Amane", "天音 萤"],
-        strategy: Guerrilla,
+        strategy: Guerrilla, skill: Skill { names: ["蛍火の支援", "Firefly Support", "萤火支援"], trigger: Trigger::Passive, bonuses: Bonuses { sight: 1.5, repair: 0.0015, ..Bonuses::NONE } },
     },
     General {
         names: ["白石 なずな", "Nazuna Shiraishi", "白石 荠"],
-        strategy: Defense,
+        strategy: Defense, skill: Skill { names: ["白花の整備陣", "White Blossom Repair", "白花维修阵"], trigger: Trigger::Passive, bonuses: Bonuses { repair: 0.004, ..Bonuses::NONE } },
     },
     General {
         names: ["ヴィクトル・クロウ", "Viktor Crow", "维克托·克劳"],
-        strategy: Offensive,
+        strategy: Offensive, skill: Skill { names: ["黒翼の報復", "Blackwing Reprisal", "黑翼复仇"], trigger: Trigger::Revenge, bonuses: Bonuses::NONE },
     },
 ];
 
@@ -426,12 +428,12 @@ fn go(position: Point, goal: Point, attack: bool) -> Order {
 }
 
 fn sight(world: &World, unit: &Unit, from: Point, enemy: &Unit) -> bool {
-    dist(from, enemy.pos) <= unit.spec().range * TS && world.map.los(tile_of(from), enemy.tile())
+    dist(from, enemy.pos) <= world.effective_range(unit) && world.map.los(tile_of(from), enemy.tile())
 }
 
-fn penetration(unit: &Unit, from: Point, enemy: &Unit) -> f32 {
-    let fraction = (dist(from, enemy.pos) / (unit.spec().range * TS)).min(1.0);
-    unit.spec().pen * (1.0 - 0.3 * fraction)
+fn penetration(world: &World, unit: &Unit, from: Point, enemy: &Unit) -> f32 {
+    let fraction = (dist(from, enemy.pos) / (world.effective_range(unit))).min(1.0);
+    unit.spec().pen * world.command_bonuses(unit).penetration * (1.0 - 0.3 * fraction)
 }
 
 fn engage(
@@ -441,7 +443,7 @@ fn engage(
     limit: Option<(Point, f32)>,
 ) -> Option<Order> {
     let in_sector = |point| limit.is_none_or(|(base, radius)| dist(base, point) <= radius);
-    let range = unit.spec().range * TS;
+    let range = world.effective_range(unit);
     let viable = |enemy: &Unit| {
         let near = dist(unit.pos, enemy.pos) < range + TS * 4.0;
         near && in_sector(enemy.pos)
@@ -466,14 +468,14 @@ fn engage(
             0.0
         };
         let score = dist(unit.pos, enemy.pos) / range + hp * 0.58 - focus;
-        let armor = enemy.armor_toward(unit.pos);
-        let pen = penetration(unit, unit.pos, enemy);
+        let armor = world.effective_armor(enemy, unit.pos);
+        let pen = penetration(world, unit, unit.pos, enemy);
         if pen >= armor * 0.88 && sight(world, unit, unit.pos, enemy) {
             let shot_score = score + armor / pen * 0.30;
             if best_shot.is_none_or(|(best, _)| shot_score < best) {
                 best_shot = Some((shot_score, i));
             }
-        } else if unit.spec().pen >= enemy.spec().rear() * 0.83 {
+        } else if unit.spec().pen * world.command_bonuses(unit).penetration >= enemy.spec().rear() * world.command_bonuses(enemy).armor * 0.83 {
             maneuvers.push((score, i));
         }
     }
@@ -485,7 +487,7 @@ fn engage(
         let enemy = &world.units[i];
         let viable_shot = |point| {
             in_sector(point)
-                && penetration(unit, point, enemy) >= enemy.armor_toward(point) * 0.90
+                && penetration(world, unit, point, enemy) >= world.effective_armor(enemy, point) * 0.90
                 && sight(world, unit, point, enemy)
         };
         if let Order::Move {
@@ -516,7 +518,7 @@ fn firing_position(
     let extra = world.extra_cost(unit.side);
     let mut candidates = Vec::new();
     for fraction in [0.58, 0.85] {
-        let radius = TS * unit.spec().range * fraction;
+        let radius = world.effective_range(unit) * fraction;
         for direction in 0..8 {
             let angle = enemy.hull + direction as f32 * std::f32::consts::FRAC_PI_4;
             let target = tile_of((
@@ -611,7 +613,7 @@ mod tests {
             panic!("a tank facing heavy frontal armor should find a firing position");
         };
         assert!(
-            penetration(&world.units[own], goal, &world.units[heavy])
+            penetration(&world, &world.units[own], goal, &world.units[heavy])
                 >= world.units[heavy].armor_toward(goal) * 0.90
         );
     }
