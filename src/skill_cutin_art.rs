@@ -1,0 +1,22 @@
+// Packed image order is identical to GENERALS and assets/generals/cutins/manifest.json.
+pub(super) const DATA: &[&[u8]] = &[
+    include_bytes!("../assets/generals/cutins/rin_asagiri.yyci"),
+    include_bytes!("../assets/generals/cutins/yui_mizuno.yyci"),
+    include_bytes!("../assets/generals/cutins/shiori_fujimori.yyci"),
+    include_bytes!("../assets/generals/cutins/akane_kujo.yyci"),
+    include_bytes!("../assets/generals/cutins/rei_tachibana.yyci"),
+    include_bytes!("../assets/generals/cutins/mio_kisaragi.yyci"),
+    include_bytes!("../assets/generals/cutins/leon_vogel.yyci"),
+    include_bytes!("../assets/generals/cutins/mikhail_ivanov.yyci"),
+    include_bytes!("../assets/generals/cutins/julian_arden.yyci"),
+    include_bytes!("../assets/generals/cutins/kai_kuroda.yyci"),
+    include_bytes!("../assets/generals/cutins/daisuke_shiba.yyci"),
+    include_bytes!("../assets/generals/cutins/naoto_kagami.yyci"),
+    include_bytes!("../assets/generals/cutins/sena_kirihara.yyci"),
+    include_bytes!("../assets/generals/cutins/lucas_wren.yyci"),
+    include_bytes!("../assets/generals/cutins/isuzu_takamine.yyci"),
+    include_bytes!("../assets/generals/cutins/emil_falk.yyci"),
+    include_bytes!("../assets/generals/cutins/hotaru_amane.yyci"),
+    include_bytes!("../assets/generals/cutins/nazuna_shiraishi.yyci"),
+    include_bytes!("../assets/generals/cutins/viktor_crow.yyci"),
+];
