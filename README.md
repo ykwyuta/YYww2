@@ -123,3 +123,7 @@ YYMythology と同じ構成で、Workers Static Assets または Pages に `dist
 | `src/win/` | Windows 版の描画（Direct3D11 / Direct2D / DirectWrite）とウィンドウ |
 
 描画・入力・Windows 版の層は YYMythology から引き継いだ。アイコンと読み込み画面の絵は `python tools/make_brand.py`、真上視点スプライトアトラスは `python tools/make_topdown_sprites.py`、透過RGBAスプライトは `python tools/make_sprites.py`（いずれも Pillow が必要）で再生成できる。
+
+### 総司令官スキル
+
+開戦前に左上の「詳細」から鷹の目・緊急補給・突破命令・総予備隊のいずれか1つを選択できます。戦闘中はCキーまたは左上のボタンで発動し、鷹の目と緊急補給は地図上の地点を指定します。総予備隊は同じ準備予算から事前購入した部隊を基地へ投入します。各スキルの効果・回数・操作は [GENERAL_SKILLS.md](GENERAL_SKILLS.md) を参照してください。

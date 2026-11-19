@@ -1,0 +1,38 @@
+{
+  "generator": "Built-in image_gen",
+  "original_size": [
+    1536,
+    1024
+  ],
+  "runtime_size": [
+    768,
+    512
+  ],
+  "characters": [
+    {
+      "id": "eagle_eye",
+      "file": "eagle_eye_v2.png",
+      "packed": "eagle_eye.yyci",
+      "prompt": "Use case: stylized-concept. One premium 1536x1024 landscape 2D illustrated special ability cut-in for a fictional WWII-style strategy game. HAWK EYE RECONNAISSANCE: a tremendous luminous golden hawk soaring above a sweeping detailed 1940s-style battlefield map with tiny tank formations, forests and hills. Cyan reconnaissance rings reveal concealed vehicles. The hawk, its sharp eye and the battlefield terrain are the protagonists. This is the PLAYER'S SUPREME COMMAND skill, not a named general's personal skill. Critical: NO portraits, NO large faces, NO foreground individual commander, NO giant human figures in the sky, NO identifiable general, NO insignia, national flags or military logos. Any people must be tiny anonymous silhouettes and subordinate to the vehicles and emblem. 1940s equipment only, no futuristic screens, missiles or modern military hardware. Beautiful polished anime-style painted 2D game key art, dramatic cinematic rim light and atmospheric depth. Main visual on RIGHT TWO THIRDS, LEFT THIRD dark deep navy negative space for game-rendered title. No words, letters, numbers, watermark, UI, logos, 3D or CGI."
+    },
+    {
+      "id": "emergency_supply",
+      "file": "emergency_supply_v2.png",
+      "packed": "emergency_supply.yyci",
+      "prompt": "Use case: stylized-concept. One premium 1536x1024 landscape 2D illustrated special ability cut-in for a fictional WWII-style strategy game. EMERGENCY SUPPLY: a powerful convoy of canvas-covered supply trucks and repair vehicles reaching friendly tank columns, crates, tools and fuel supplies, tiny anonymous mechanics at work, green and gold restorative light paths. The convoy, supplies and teamwork are the protagonists. This is the PLAYER'S SUPREME COMMAND skill, not a named general's personal skill. Critical: NO portraits, NO large faces, NO foreground individual commander, NO giant human figures in the sky, NO identifiable general, NO insignia, national flags or military logos. Any people must be tiny anonymous silhouettes and subordinate to the vehicles and emblem. 1940s equipment only, no futuristic screens, missiles or modern military hardware. Beautiful polished anime-style painted 2D game key art, dramatic cinematic rim light and atmospheric depth. Main visual on RIGHT TWO THIRDS, LEFT THIRD dark deep navy negative space for game-rendered title. No words, letters, numbers, watermark, UI, logos, 3D or CGI."
+    },
+    {
+      "id": "breakthrough",
+      "file": "breakthrough_v2.png",
+      "packed": "breakthrough.yyci",
+      "prompt": "Use case: stylized-concept. One premium 1536x1024 landscape 2D illustrated special ability cut-in for a fictional WWII-style strategy game. BREAKTHROUGH ORDER: a dramatic low-angle wide battlefield shot of a wedge of 1940s-style tanks bursting through smoke together, sweeping crimson and gold diagonal speed trails, armor and tracks sharply illustrated, distant infantry silhouettes tiny. The surging armored formation is the protagonist. This is the PLAYER'S SUPREME COMMAND skill, not a named general's personal skill. Critical: NO portraits, NO large faces, NO foreground individual commander, NO giant human figures in the sky, NO identifiable general, NO insignia, national flags or military logos. Any people must be tiny anonymous silhouettes and subordinate to the vehicles and emblem. 1940s equipment only, no futuristic screens, missiles or modern military hardware. Beautiful polished anime-style painted 2D game key art, dramatic cinematic rim light and atmospheric depth. Main visual on RIGHT TWO THIRDS, LEFT THIRD dark deep navy negative space for game-rendered title. No words, letters, numbers, watermark, UI, logos, 3D or CGI."
+    },
+    {
+      "id": "reserves",
+      "file": "reserves_v2.png",
+      "packed": "reserves.yyci",
+      "prompt": "Use case: stylized-concept. One premium 1536x1024 landscape 2D illustrated special ability cut-in for a fictional WWII-style strategy game. GRAND RESERVE: an enormous fresh armored reserve force assembling at a fortified headquarters and rolling down a ridge at dawn, long orderly columns of tanks and supply trucks, deep royal blue and silver-gold light and clouds. The massed reinforcements and headquarters are the protagonists. This is the PLAYER'S SUPREME COMMAND skill, not a named general's personal skill. Critical: NO portraits, NO large faces, NO foreground individual commander, NO giant human figures in the sky, NO identifiable general, NO insignia, national flags or military logos. Any people must be tiny anonymous silhouettes and subordinate to the vehicles and emblem. 1940s equipment only, no futuristic screens, missiles or modern military hardware. Beautiful polished anime-style painted 2D game key art, dramatic cinematic rim light and atmospheric depth. Main visual on RIGHT TWO THIRDS, LEFT THIRD dark deep navy negative space for game-rendered title. No words, letters, numbers, watermark, UI, logos, 3D or CGI."
+    }
+  ],
+  "art_direction": "Supreme command motifs; no individual commanders, portraits, flags or insignia"
+}
